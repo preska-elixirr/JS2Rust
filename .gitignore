@@ -1,0 +1,21 @@
+# Local Claude Code settings (only used to preview the site)
+.claude/
+
+# Vercel CLI link folder
+.vercel/
+
+# Editors
+.vscode/
+.idea/
+
+# OS files
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Rust build output, if you add example projects later
+target/
+
+# Logs and temp files
+*.log
+*.tmp

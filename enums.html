@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Enums and pattern matching · Rust from JS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<script>try{var t=localStorage.getItem('rjs-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body data-page="enums.html">
+<main class="lesson">
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 09 · Data</p>
+  <h1>Enums and pattern matching</h1>
+  <p class="lead">If you like TypeScript's discriminated unions, you will love Rust enums. They are the same idea built into the language, and the compiler checks every case for you.</p>
+</header>
+
+<div class="learn">
+  <p>You will learn</p>
+  <ul>
+    <li>How a string literal union like <code>"up" | "down"</code> becomes an enum</li>
+    <li>How discriminated unions become enums whose variants carry data</li>
+    <li>Why <code>match</code> catches the case you forgot, with no <code>never</code> trick needed</li>
+    <li>The shortcuts: <code>if let</code>, <code>let else</code>, <code>matches!</code>, guards and <code>@</code> bindings</li>
+  </ul>
+</div>
+
+<section>
+  <h2 data-short="Simple enums">String unions become enums</h2>
+  <p>In TypeScript you often limit a value to a few strings. In Rust you list the options as variants of an <code>enum</code>. Variant names use <code>PascalCase</code>, and you write them with the enum name in front: <code>Direction::Up</code>.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+type Direction = "up" | "down" | "left" | "right";
+
+function step(dir: Direction): [number, number] {
+  switch (dir) {
+    case "up":    return [0, -1];
+    case "down":  return [0, 1];
+    case "left":  return [-1, 0];
+    case "right": return [1, 0];
+  }
+}
+
+step("up");
+step("upp"); // TS error: not assignable to 'Direction'
+</script>
+<script type="text/x-code" data-lang="rust">
+enum Direction {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+fn step(dir: Direction) -> (i32, i32) {
+    match dir {
+        Direction::Up => (0, -1),
+        Direction::Down => (0, 1),
+        Direction::Left => (-1, 0),
+        Direction::Right => (1, 0),
+    }
+}
+
+step(Direction::Up);
+</script>
+  </div>
+  <p>A TypeScript union of strings is still a string at runtime. You can log it, compare it with <code>===</code>, and send it as JSON. A Rust enum variant is not a string. If you want to print it, add <code>#[derive(Debug)]</code>. If you want <code>==</code>, add <code>#[derive(PartialEq)]</code>. A typo like <code>Direction::Upp</code> fails at compile time, just like in TypeScript.</p>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p>Most small enums start with <code>#[derive(Debug, Clone, Copy, PartialEq)]</code>. With <code>Copy</code>, passing a <code>Direction</code> to a function copies it instead of moving it, just like a number.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="Enums with data">Discriminated unions become enums with data</h2>
+  <p>This is where Rust enums get powerful. Each variant can carry its own data. In TypeScript you build this with a shared <code>kind</code> field. In Rust the variant itself is the tag, so you do not need a <code>kind</code> field.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+type Shape =
+  | { kind: "circle"; radius: number }
+  | { kind: "rect"; w: number; h: number }
+  | { kind: "point" };
+
+function area(s: Shape): number {
+  switch (s.kind) {
+    case "circle":
+      return Math.PI * s.radius ** 2;
+    case "rect":
+      return s.w * s.h;
+    case "point":
+      return 0;
+  }
+}
+
+area({ kind: "rect", w: 2, h: 3 }); // 6
+</script>
+<script type="text/x-code" data-lang="rust">
+enum Shape {
+    Circle { radius: f64 },
+    Rect { w: f64, h: f64 },
+    Point,
+}
+
+fn area(s: &Shape) -> f64 {
+    match s {
+        Shape::Circle { radius } => std::f64::consts::PI * radius * radius,
+        Shape::Rect { w, h } => w * h,
+        Shape::Point => 0.0,
+    }
+}
+
+area(&Shape::Rect { w: 2.0, h: 3.0 }); // 6.0
+</script>
+  </div>
+  <p>Inside each <code>match</code> arm, the fields of that variant become variables. TypeScript does the same thing with narrowing: after <code>case "circle"</code>, it knows <code>s.radius</code> exists. Rust gives you <code>radius</code> directly.</p>
+
+  <h3>Three shapes of variant</h3>
+  <p>A variant can have no data, named fields like a struct, or unnamed fields like a tuple. You can mix them in one enum.</p>
+<script type="text/x-code" data-lang="rust">
+enum Message {
+    Quit,                       // no data
+    Move { x: i32, y: i32 },    // named fields, like a struct
+    Write(String),              // one unnamed value
+    Color(u8, u8, u8),          // several unnamed values
+}
+
+let m1 = Message::Quit;
+let m2 = Message::Move { x: 10, y: 20 };
+let m3 = Message::Write(String::from("hello"));
+let m4 = Message::Color(255, 128, 0);
+</script>
+  <aside class="callout note">
+    <p class="callout-title">Mental model</p>
+    <p>An enum value is exactly one of its variants at a time, together with that variant's data. It is a box with a label. The label says which variant it is. You must check the label before you can touch the data inside. <code>match</code> is how you check.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="Exhaustive match">match checks every case</h2>
+  <p>In TypeScript, a forgotten case is easy to miss. The usual safety net is a <code>never</code> check in the <code>default</code> branch, and you must remember to write it. In Rust, <code>match</code> must cover every variant. The check is always on.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+function area(s: Shape): number {
+  switch (s.kind) {
+    case "circle":
+      return Math.PI * s.radius ** 2;
+    case "rect":
+      return s.w * s.h;
+    // forgot "point"
+    default: {
+      const unreachable: never = s;
+      // TS error: Type '{ kind: "point"; }'
+      // is not assignable to type 'never'.
+      throw new Error("unknown shape");
+    }
+  }
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+fn area(s: &Shape) -> f64 {
+    match s {
+        Shape::Circle { radius } => std::f64::consts::PI * radius * radius,
+        Shape::Rect { w, h } => w * h,
+        // forgot Point
+    }
+}
+</script>
+  </div>
+<script type="text/x-code" data-lang="output" data-title="What rustc says">
+error[E0004]: non-exhaustive patterns: `&Shape::Point` not covered
+ --> src/main.rs:8:11
+  |
+8 |     match s {
+  |           ^ pattern `&Shape::Point` not covered
+</script>
+  <p>This pays off when the code grows. Add a <code>Triangle</code> variant next month, and the compiler lists every <code>match</code> in the project that needs a new arm. Nothing slips through to production.</p>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p>A catch-all arm <code>_ =&gt; ...</code> turns this check off for that <code>match</code>. New variants fall into the catch-all without a warning. Use <code>_</code> when you really mean "everything else", not to make an error go away.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Methods on enums</h2>
+  <p>Enums get <code>impl</code> blocks just like structs (see <a href="objects.html">lesson 8</a>). Inside, <code>match self</code> is the usual pattern. You can write <code>Self::Circle</code> instead of <code>Shape::Circle</code>.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+function shapeName(s: Shape): string {
+  switch (s.kind) {
+    case "circle": return "circle";
+    case "rect": return "rectangle";
+    case "point": return "point";
+  }
+}
+
+const shapes: Shape[] = [
+  { kind: "circle", radius: 1 },
+  { kind: "rect", w: 2, h: 3 },
+];
+
+for (const s of shapes) {
+  console.log(`${shapeName(s)} has area ${area(s).toFixed(2)}`);
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+impl Shape {
+    fn area(&self) -> f64 {
+        match self {
+            Self::Circle { radius } => std::f64::consts::PI * radius * radius,
+            Self::Rect { w, h } => w * h,
+            Self::Point => 0.0,
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Circle { .. } => "circle",
+            Self::Rect { .. } => "rectangle",
+            Self::Point => "point",
+        }
+    }
+}
+
+let shapes = vec![
+    Shape::Circle { radius: 1.0 },
+    Shape::Rect { w: 2.0, h: 3.0 },
+];
+
+for s in &shapes {
+    println!("{} has area {:.2}", s.name(), s.area());
+}
+</script>
+  </div>
+  <p><code>{ .. }</code> means "this variant, whatever its fields are". <code>&amp;'static str</code> is a string that lives for the whole program, like a string literal. <a href="strings.html">Lesson 6</a> explains it.</p>
+</section>
+
+<section>
+  <h2 data-short="Numeric enums">TypeScript numeric enums</h2>
+  <p>TypeScript also has an <code>enum</code> keyword, mostly used for numbered codes. Rust can give variants explicit numbers too. The difference is that Rust never turns a number back into an enum for you.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+enum Status {
+  Active = 1,
+  Inactive = 2,
+  Banned = 10,
+}
+
+const code: number = Status.Banned; // 10
+const s: Status = 2;                // allowed
+console.log(Status[10]);            // "Banned"
+</script>
+<script type="text/x-code" data-lang="rust">
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Status {
+    Active = 1,
+    Inactive = 2,
+    Banned = 10,
+}
+
+let code = Status::Banned as i32;   // 10
+// let s: Status = 2;               // error[E0308]: mismatched types
+let s = Status::Inactive;
+println!("{:?}", s);                // Inactive
+</script>
+  </div>
+  <p>To go from a number to a variant, you write the conversion yourself. The standard way is the <code>TryFrom</code> trait, because the number might not match any variant.</p>
+<script type="text/x-code" data-lang="rust">
+impl TryFrom<i32> for Status {
+    type Error = String;
+
+    fn try_from(n: i32) -> Result<Self, Self::Error> {
+        match n {
+            1 => Ok(Status::Active),
+            2 => Ok(Status::Inactive),
+            10 => Ok(Status::Banned),
+            other => Err(format!("unknown status code {other}")),
+        }
+    }
+}
+
+let a = Status::try_from(10);  // Ok(Status::Banned)
+let b = Status::try_from(3);   // Err("unknown status code 3")
+</script>
+</section>
+
+<section>
+  <h2 data-short="Option and Result">Option and Result are plain enums</h2>
+  <p>The two most important types in Rust are enums from the standard library. Simplified, they look like this:</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+// The closest TypeScript versions
+type Option<T> = T | undefined;
+
+type Result<T, E> =
+  | { ok: true; value: T }
+  | { ok: false; error: E };
+</script>
+<script type="text/x-code" data-lang="rust">
+// From the standard library (simplified)
+enum Option<T> {
+    None,
+    Some(T),
+}
+
+enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+</script>
+  </div>
+  <p>Rust loads them in every file automatically, so you write <code>Some(5)</code> and <code>None</code> without the <code>Option::</code> prefix. Everything in this lesson works on them: <code>match</code>, <code>if let</code>, <code>let else</code>. <code>Option</code> replaces <code>null</code>, and <code>Result</code> replaces exceptions. <a href="errors.html">Lesson 10</a> is all about them.</p>
+<script type="text/x-code" data-lang="rust">
+fn first_even(numbers: &[i32]) -> Option<i32> {
+    for &n in numbers {
+        if n % 2 == 0 {
+            return Some(n);
+        }
+    }
+    None
+}
+
+match first_even(&[1, 3, 4, 5]) {
+    Some(n) => println!("found {n}"),
+    None => println!("no even numbers"),
+}
+</script>
+</section>
+
+<section>
+  <h2 data-short="if let and let else">if let and let else</h2>
+  <p>A full <code>match</code> is a lot of typing when you only care about one variant. <code>if let</code> is the shortcut. Read it as "if this value matches this pattern, then...".</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+if (shape.kind === "circle") {
+  console.log(`radius ${shape.radius}`);
+} else {
+  console.log("not a circle");
+}
+
+const user = findUser(1);
+if (user) {
+  console.log(user.name);
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+if let Shape::Circle { radius } = shape {
+    println!("radius {radius}");
+} else {
+    println!("not a circle");
+}
+
+let user = find_user(1);
+if let Some(user) = user {
+    println!("{}", user.name);
+}
+</script>
+  </div>
+
+  <h3>let else for early returns</h3>
+  <p>A common JavaScript style is the guard clause: check for the bad case, return early, then carry on with a narrowed value. <code>let else</code> does exactly that. If the pattern does not match, the <code>else</code> block runs, and it must leave the function (or loop) with <code>return</code>, <code>break</code>, <code>continue</code> or a panic.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+function radiusOf(s: Shape): number {
+  if (s.kind !== "circle") {
+    return 0;
+  }
+  return s.radius; // narrowed to circle
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+fn radius_of(s: &Shape) -> f64 {
+    let Shape::Circle { radius } = s else {
+        return 0.0;
+    };
+    *radius // `radius` is a &f64 here
+}
+</script>
+  </div>
+</section>
+
+<section>
+  <h2 data-short="matches!">Getting a bool with matches!</h2>
+  <p>Sometimes you only want <code>true</code> or <code>false</code>: "is this a circle?". The <code>matches!</code> macro gives you that in one line. It is handy inside <code>filter</code>.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const isCircle = s.kind === "circle";
+
+const bigCircles = shapes.filter(
+  (s) => s.kind === "circle" && s.radius > 10
+);
+</script>
+<script type="text/x-code" data-lang="rust">
+let is_circle = matches!(s, Shape::Circle { .. });
+
+let big_circles: Vec<&Shape> = shapes
+    .iter()
+    .filter(|s| matches!(s, Shape::Circle { radius } if *radius > 10.0))
+    .collect();
+</script>
+  </div>
+  <p>The <code>if *radius &gt; 10.0</code> part is a guard. The next section explains guards.</p>
+</section>
+
+<section>
+  <h2 data-short="More patterns">Patterns: guards, ranges, @ and nesting</h2>
+  <p>Patterns can do much more than name a variant. <a href="control-flow.html">Lesson 4</a> showed <code>match</code> on numbers. Here is the full toolbox.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+function describe(n) {
+  switch (true) {
+    case n === 0:
+      return "zero";
+    case n === 1 || n === 2 || n === 3:
+      return "small";
+    case n >= 4 && n <= 9:
+      return "medium";
+    case n < 0:
+      return "negative";
+    default:
+      return "large";
+  }
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+fn describe(n: i32) -> &'static str {
+    match n {
+        0 => "zero",
+        1 | 2 | 3 => "small",        // several values
+        4..=9 => "medium",           // inclusive range
+        x if x < 0 => "negative",    // guard: extra condition
+        _ => "large",                // anything else
+    }
+}
+</script>
+  </div>
+  <p>Rust checks the arms from top to bottom and runs the first one that matches. There is no fall-through and no <code>break</code>.</p>
+
+  <h3>Binding a value with @</h3>
+  <p><code>name @ pattern</code> checks the pattern and also keeps the value in a variable.</p>
+<script type="text/x-code" data-lang="rust">
+let age = 16;
+match age {
+    teen @ 13..=19 => println!("teenager, {teen} years old"),
+    other => println!("{other} years old"),
+}
+</script>
+
+  <h3>Nested patterns</h3>
+  <p>Patterns nest as deep as your data. You can match a variant, a specific value inside it, and an <code>Option</code> inside that, all in one arm.</p>
+<script type="text/x-code" data-lang="rust">
+enum Event {
+    Click { x: i32, y: i32 },
+    Key(char),
+    Resize(Option<(u32, u32)>),
+}
+
+fn handle(e: Event) {
+    match e {
+        Event::Click { x: 0, y: 0 } => println!("clicked the corner"),
+        Event::Click { x, .. } if x < 0 => println!("off screen"),
+        Event::Click { x, y } => println!("click at {x},{y}"),
+        Event::Key('q') => println!("quit"),
+        Event::Key(c) => println!("key {c}"),
+        Event::Resize(Some((w, h))) => println!("now {w}x{h}"),
+        Event::Resize(None) => println!("size unknown"),
+    }
+}
+</script>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Pattern</th><th>Matches</th><th>Example</th></tr></thead>
+      <tbody>
+        <tr><td>Literal</td><td>One exact value</td><td><code>0</code>, <code>'q'</code>, <code>"yes"</code>, <code>true</code></td></tr>
+        <tr><td><code>a | b</code></td><td>Either pattern</td><td><code>1 | 2 | 3</code></td></tr>
+        <tr><td><code>a..=b</code></td><td>A range, both ends included</td><td><code>'a'..='z'</code>, <code>4..=9</code></td></tr>
+        <tr><td>A name</td><td>Anything, and binds it</td><td><code>x</code>, <code>other</code></td></tr>
+        <tr><td><code>_</code></td><td>Anything, and ignores it</td><td><code>_ =&gt; ...</code>, <code>Some(_)</code></td></tr>
+        <tr><td><code>..</code></td><td>The remaining fields or items</td><td><code>Rect { w, .. }</code>, <code>(first, ..)</code></td></tr>
+        <tr><td><code>name @ pat</code></td><td>The pattern, and binds the value</td><td><code>n @ 1..=9</code></td></tr>
+        <tr><td><code>pat if cond</code></td><td>The pattern, if the guard is true</td><td><code>x if x &lt; 0</code></td></tr>
+        <tr><td>Variant</td><td>One enum variant and its data</td><td><code>Some(x)</code>, <code>Shape::Rect { w, h }</code></td></tr>
+        <tr><td>Tuple</td><td>Each item in a tuple</td><td><code>(0, y)</code>, <code>(a, b)</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2 data-short="State machine">A real example: a fetch state machine</h2>
+  <p>React developers model loading state with a discriminated union so that impossible states, like "loading with an error", cannot exist. Rust enums do this naturally. Here is the same state in both languages.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+type Post = { id: number; title: string };
+
+type FetchState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "success"; posts: Post[] }
+  | { status: "error"; message: string };
+
+function render(state: FetchState): string {
+  switch (state.status) {
+    case "idle":
+      return "Click to load";
+    case "loading":
+      return "Loading...";
+    case "success":
+      return `${state.posts.length} posts`;
+    case "error":
+      return `Error: ${state.message}`;
+  }
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+struct Post {
+    id: u32,
+    title: String,
+}
+
+enum FetchState {
+    Idle,
+    Loading,
+    Success(Vec<Post>),
+    Failed(String),
+}
+
+fn render(state: &FetchState) -> String {
+    match state {
+        FetchState::Idle => "Click to load".to_string(),
+        FetchState::Loading => "Loading...".to_string(),
+        FetchState::Success(posts) => format!("{} posts", posts.len()),
+        FetchState::Failed(message) => format!("Error: {message}"),
+    }
+}
+</script>
+  </div>
+  <p>Moving between states fits nicely in a method that takes <code>self</code>. It consumes the old state and returns the new one, much like a reducer in <code>useReducer</code>. Matching on a tuple lets you look at the current state and the incoming result together.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+type FetchResult =
+  | { ok: true; posts: Post[] }
+  | { ok: false; error: string };
+
+function finish(state: FetchState, result: FetchResult): FetchState {
+  if (state.status !== "loading") return state;
+  return result.ok
+    ? { status: "success", posts: result.posts }
+    : { status: "error", message: result.error };
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+impl FetchState {
+    fn finish(self, result: Result<Vec<Post>, String>) -> FetchState {
+        match (self, result) {
+            (FetchState::Loading, Ok(posts)) => FetchState::Success(posts),
+            (FetchState::Loading, Err(e)) => FetchState::Failed(e),
+            (other, _) => other, // ignore results that arrive late
+        }
+    }
+}
+
+let state = FetchState::Loading;
+let state = state.finish(Ok(vec![]));
+</script>
+  </div>
+  <aside class="callout note">
+    <p class="callout-title">Mental model</p>
+    <p>In TypeScript the union protects you until someone writes <code>as any</code> or forgets a <code>never</code> check. In Rust there is no way around it. The posts exist only inside <code>Success</code>, so code that reads posts while loading cannot be written at all.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Check yourself</h2>
+  <div class="quiz">
+    <details>
+      <summary>A TypeScript union uses a <code>kind</code> field as its tag. What plays that role in Rust?</summary>
+      <div><p>The variant itself. <code>Shape::Circle { radius }</code> carries its own tag, so you never add a <code>kind</code> field.</p></div>
+    </details>
+    <details>
+      <summary>You add a new variant to an enum. What happens to existing <code>match</code> expressions?</summary>
+      <div><p>Every <code>match</code> that does not have a <code>_</code> arm stops compiling with error E0004, and the error points to each one. You update them, and nothing is missed.</p></div>
+    </details>
+    <details>
+      <summary>When do you use <code>if let</code> instead of <code>match</code>?</summary>
+      <div><p>When you care about one pattern and want to ignore or <code>else</code> the rest. <code>match</code> is for handling several cases.</p></div>
+    </details>
+    <details>
+      <summary>Why does <code>if dir == Direction::Up</code> fail on a fresh enum?</summary>
+      <div><p><code>==</code> needs the <code>PartialEq</code> trait. Add <code>#[derive(PartialEq)]</code>, or use <code>matches!(dir, Direction::Up)</code>.</p></div>
+    </details>
+    <details>
+      <summary>What must the <code>else</code> block of a <code>let else</code> do?</summary>
+      <div><p>Leave the current function or loop: <code>return</code>, <code>break</code>, <code>continue</code>, or panic. It cannot fall through, because the variable would have no value.</p></div>
+    </details>
+  </div>
+</section>
+
+</main>
+<script src="assets/app.js"></script>
+</body>
+</html>

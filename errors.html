@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Null and errors · Rust from JS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<script>try{var t=localStorage.getItem('rjs-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body data-page="errors.html">
+<main class="lesson">
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 10 · Real programs</p>
+  <h1>Null and errors</h1>
+  <p class="lead">Rust has no <code>null</code>, no <code>undefined</code> and no exceptions. A value that might be missing is an <code>Option</code>. An operation that might fail returns a <code>Result</code>. Both show up in the type, so the compiler makes you deal with them.</p>
+</header>
+
+<div class="learn">
+  <p>You will learn</p>
+  <ul>
+    <li>How <code>Option</code> replaces <code>null</code>, <code>?.</code> and <code>??</code></li>
+    <li>How <code>Result</code> replaces <code>throw</code> and <code>try / catch</code></li>
+    <li>The <code>?</code> operator, which lets errors bubble up like exceptions do</li>
+    <li>When a panic is fine, and how to build your own error types with <code>thiserror</code> and <code>anyhow</code></li>
+  </ul>
+</div>
+
+<section>
+  <h2 data-short="No null">There is no null: meet Option</h2>
+  <p>In JavaScript any value can be <code>null</code> or <code>undefined</code>, and TypeScript only helps if <code>strict</code> mode is on. In Rust a normal value is never missing. When it can be missing, its type is <code>Option&lt;T&gt;</code>, which is either <code>Some(value)</code> or <code>None</code>.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+function findUser(users: User[], id: number): User | undefined {
+  return users.find((u) => u.id === id);
+}
+
+const user = findUser(users, 7);
+console.log(user.name);
+// strict TS: 'user' is possibly 'undefined'
+// plain JS: TypeError at runtime
+
+if (user) {
+  console.log(user.name);   // fine
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+fn find_user(users: &[User], id: u32) -> Option<&User> {
+    users.iter().find(|u| u.id == id)
+}
+
+let user = find_user(&users, 7);
+// println!("{}", user.name);
+// error[E0609]: no field `name` on type `Option<&User>`
+
+if let Some(user) = user {
+    println!("{}", user.name);  // fine
+}
+</script>
+  </div>
+  <p>You cannot reach the <code>User</code> without unpacking the <code>Option</code> first. The two common ways are <code>if let</code> (one case) and <code>match</code> (both cases). <a href="enums.html">Lesson 9</a> explains both in detail.</p>
+<script type="text/x-code" data-lang="rust">
+match find_user(&users, 7) {
+    Some(user) => println!("found {}", user.name),
+    None => println!("no user with id 7"),
+}
+</script>
+  <aside class="callout note">
+    <p class="callout-title">Mental model</p>
+    <p><code>Option&lt;User&gt;</code> is a box that holds one user or nothing. A <code>User</code> is the user itself. They are different types, so you can never mix them up by accident. The "billion-dollar mistake" of null cannot happen.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="?. and ??">Optional chaining and nullish coalescing</h2>
+  <p><code>?.</code> and <code>??</code> are the tools you reach for daily in TypeScript. Rust has methods on <code>Option</code> that do the same jobs.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+interface Address { city?: string }
+interface User { name: string; address?: Address }
+
+const user: User | undefined = findUser(users, 7);
+
+const city = user?.address?.city ?? "unknown";
+const nameLength = user?.name.length ?? 0;
+</script>
+<script type="text/x-code" data-lang="rust">
+struct Address { city: Option<String> }
+struct User { name: String, address: Option<Address> }
+
+let user: Option<&User> = find_user(&users, 7);
+
+let city: &str = user
+    .and_then(|u| u.address.as_ref())
+    .and_then(|a| a.city.as_deref())
+    .unwrap_or("unknown");
+
+let name_length = user.map(|u| u.name.len()).unwrap_or(0);
+</script>
+  </div>
+  <ul>
+    <li><code>map</code> runs a function on the value if there is one, and keeps <code>None</code> as <code>None</code>. Use it when the function returns a plain value.</li>
+    <li><code>and_then</code> does the same, but the function itself returns an <code>Option</code>. Use it to chain steps that can each be missing. It is the <code>flatMap</code> of options.</li>
+    <li><code>unwrap_or(x)</code> gives the value, or <code>x</code> if there is none. That is <code>??</code>.</li>
+    <li><code>as_ref()</code> and <code>as_deref()</code> let you look inside an <code>Option</code> field without taking it out of the struct.</li>
+  </ul>
+
+  <h3>The ? operator on Option</h3>
+  <p>Inside a function that returns an <code>Option</code>, you can put <code>?</code> after any <code>Option</code>. If it is <code>None</code>, the function returns <code>None</code> right away. If it is <code>Some</code>, you get the value and keep going. This reads much like a chain of <code>?.</code>.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+function cityOf(user?: User): string | undefined {
+  return user?.address?.city;
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+fn city_of(user: Option<&User>) -> Option<&str> {
+    let address = user?.address.as_ref()?;
+    address.city.as_deref()
+}
+</script>
+  </div>
+
+  <h3>Three ways to write ??</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Rust</th><th>JavaScript</th><th>When</th></tr></thead>
+      <tbody>
+        <tr><td><code>opt.unwrap_or(0)</code></td><td><code>x ?? 0</code></td><td>The default is a cheap, ready value</td></tr>
+        <tr><td><code>opt.unwrap_or_else(|| load_default())</code></td><td><code>x ?? loadDefault()</code></td><td>The default is costly to build. The closure runs only when needed.</td></tr>
+        <tr><td><code>opt.unwrap_or_default()</code></td><td><code>x ?? ""</code>, <code>x ?? 0</code>, <code>x ?? []</code></td><td>The type's empty value is fine</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p><code>unwrap_or(expensive())</code> always calls <code>expensive()</code>, even when the value is there, because Rust evaluates arguments before the call. JavaScript's <code>??</code> skips the right side. Use <code>unwrap_or_else</code> to get the lazy behavior.</p>
+  </aside>
+  <p>There is no <code>||</code> version with truthy and falsy values. An empty string or a zero inside <code>Some</code> is still a value. If you want to treat it as missing, say so: <code>opt.filter(|s| !s.is_empty())</code>.</p>
+</section>
+
+<section>
+  <h2 data-short="unwrap and expect">The ! assertion becomes unwrap and expect</h2>
+  <p>TypeScript's non-null assertion <code>x!</code> tells the compiler "trust me, it is there". Rust has <code>unwrap()</code> for the same job. The difference is what happens when you are wrong. TypeScript lets the bad value flow on. Rust stops the program right there with a panic.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const app = document.getElementById("app")!;
+app.textContent = "Hello";
+// if #app is missing: TypeError, maybe much later
+</script>
+<script type="text/x-code" data-lang="rust">
+let user = find_user(&users, 1).unwrap();
+// if there is no user 1:
+// called `Option::unwrap()` on a `None` value
+
+let user = find_user(&users, 1).expect("user 1 is the admin and must exist");
+// same, but with your message in the crash report
+</script>
+  </div>
+  <p><code>unwrap</code> is fine in examples, tests, quick scripts, and in spots where a missing value really means a bug in your code. In application logic, prefer <code>match</code>, <code>if let</code>, <code>unwrap_or</code> or <code>?</code>. When you do use it, <code>expect</code> with a clear message makes the crash easy to trace.</p>
+</section>
+
+<section>
+  <h2 data-short="Result">Errors are values: meet Result</h2>
+  <p>In JavaScript, any function can <code>throw</code>, and nothing in its signature tells you so. In Rust, a function that can fail returns <code>Result&lt;T, E&gt;</code>. That is either <code>Ok(value)</code> or <code>Err(error)</code>. The caller sees the possible failure in the type and must handle it.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+function parseAge(input: string): number {
+  const n = Number(input.trim());
+  if (Number.isNaN(n)) {
+    throw new Error(`not a number: ${input}`);
+  }
+  if (n < 0) {
+    throw new Error("age cannot be negative");
+  }
+  return n;
+}
+
+try {
+  const age = parseAge("abc");
+  console.log(age);
+} catch (e) {
+  console.error((e as Error).message);
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+fn parse_age(input: &str) -> Result<u32, String> {
+    let n: i64 = match input.trim().parse() {
+        Ok(n) => n,
+        Err(_) => return Err(format!("not a number: {input}")),
+    };
+    if n < 0 {
+        return Err("age cannot be negative".to_string());
+    }
+    Ok(n as u32)
+}
+
+match parse_age("abc") {
+    Ok(age) => println!("{age}"),
+    Err(message) => eprintln!("{message}"),
+}
+</script>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>JavaScript</th><th>Rust</th></tr></thead>
+      <tbody>
+        <tr><td><code>return value</code></td><td><code>Ok(value)</code></td></tr>
+        <tr><td><code>throw new Error(msg)</code></td><td><code>return Err(msg)</code></td></tr>
+        <tr><td><code>try { ... } catch (e) { ... }</code></td><td><code>match result { Ok(v) =&gt; ..., Err(e) =&gt; ... }</code></td></tr>
+        <tr><td>Only care about the error</td><td><code>if let Err(e) = result { ... }</code></td></tr>
+        <tr><td><code>console.error(...)</code></td><td><code>eprintln!(...)</code>, prints to stderr</td></tr>
+        <tr><td><code>finally</code></td><td>Not needed. Rust cleans up values when they go out of scope.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p>If you call a function that returns a <code>Result</code> and ignore it, Rust warns: "unused `Result` that must be used". Errors cannot be silently swallowed by accident. To ignore one on purpose, write <code>let _ = save();</code>.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="The ? operator">The ? operator: let it bubble up</h2>
+  <p>Most of the time you do not handle an error where it happens. You let it travel up to a caller that knows what to do. JavaScript does this for free: exceptions bubble up until something catches them. Rust does it with one character, <code>?</code>.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+import fs from "node:fs";
+
+function readPort(path: string): number {
+  const text = fs.readFileSync(path, "utf8"); // may throw
+  const port = parseInt(text.trim(), 10);
+  if (Number.isNaN(port)) throw new Error("bad port");
+  return port;
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+use std::error::Error;
+use std::fs;
+
+fn read_port(path: &str) -> Result<u16, Box<dyn Error>> {
+    let text = fs::read_to_string(path)?;  // io::Error goes up
+    let port: u16 = text.trim().parse()?;  // ParseIntError goes up
+    Ok(port)
+}
+</script>
+  </div>
+  <figure class="diagram">
+    <svg viewBox="0 0 700 200" role="img" aria-label="The question mark operator unwraps Ok values and returns early on Err values">
+      <defs>
+        <marker id="arr-q" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="d-arrow"/>
+        </marker>
+      </defs>
+      <rect x="10" y="72" width="200" height="56" rx="8" class="d-rs"/>
+      <text x="110" y="105" font-size="14" text-anchor="middle" class="d-mono">text.parse()?</text>
+      <line x1="210" y1="92" x2="296" y2="52" class="d-line" stroke-width="1.5" marker-end="url(#arr-q)"/>
+      <line x1="210" y1="108" x2="296" y2="148" class="d-line" stroke-width="1.5" marker-end="url(#arr-q)"/>
+      <rect x="300" y="22" width="390" height="56" rx="8" class="d-tip"/>
+      <text x="495" y="46" font-size="14" text-anchor="middle" class="d-mono d-t-tip">Ok(8080)</text>
+      <text x="495" y="66" font-size="12.5" text-anchor="middle">gives you 8080, and the next line runs</text>
+      <rect x="300" y="122" width="390" height="56" rx="8" class="d-warn"/>
+      <text x="495" y="146" font-size="14" text-anchor="middle" class="d-mono d-t-warn">Err(e)</text>
+      <text x="495" y="166" font-size="12.5" text-anchor="middle">returns Err(e) from the whole function, right now</text>
+    </svg>
+    <figcaption>The ? operator is a short way to write "match, and on Err, return it".</figcaption>
+  </figure>
+  <p>Without <code>?</code>, every call would need its own <code>match</code>. With it, the happy path reads top to bottom like JavaScript, but every place that can fail is marked with a visible <code>?</code>.</p>
+  <ul>
+    <li><code>?</code> only works inside a function that returns <code>Result</code> (or <code>Option</code>, for options).</li>
+    <li>It converts the error into the function's error type on the way out. That is why one function can bubble up both an <code>io::Error</code> and a <code>ParseIntError</code> as <code>Box&lt;dyn Error&gt;</code>.</li>
+    <li><code>Box&lt;dyn Error&gt;</code> means "any kind of error". It is the easy choice for scripts and small apps.</li>
+  </ul>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p>To change an error before it goes up, like catching and rethrowing a nicer one, use <code>map_err</code>: <code>text.parse().map_err(|_| "bad port".to_string())?</code>.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="panic!">panic! vs throw</h2>
+  <p>Rust does have a crash: <code>panic!</code>. It looks like <code>throw</code>, but it plays a different role. A panic means "this is a bug, stop now". You do not catch panics to handle normal failures.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+// JS uses throw for everything
+throw new Error("file not found");      // expected problem
+throw new Error("unreachable state");   // bug
+</script>
+<script type="text/x-code" data-lang="rust">
+// Expected problem: return an error
+return Err(MyError::FileNotFound);
+
+// Bug, impossible state: panic
+panic!("unreachable state: {state:?}");
+</script>
+  </div>
+  <p>Things that panic for you include <code>unwrap()</code> on <code>None</code> or <code>Err</code>, indexing past the end of a list, dividing an integer by zero, and integer overflow in debug builds.</p>
+<script type="text/x-code" data-lang="output" data-title="let v = vec![1, 2, 3]; v[10];">
+thread 'main' panicked at src/main.rs:3:6:
+index out of bounds: the len is 3 but the index is 10
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+</script>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Situation</th><th>Use</th></tr></thead>
+      <tbody>
+        <tr><td>File missing, bad user input, network down, record not found</td><td><code>Result</code></td></tr>
+        <tr><td>A value that may or may not exist</td><td><code>Option</code></td></tr>
+        <tr><td>Your own code broke a rule it should never break</td><td><code>panic!</code>, <code>unreachable!</code>, <code>expect</code></td></tr>
+        <tr><td>Tests, examples, quick prototypes</td><td><code>unwrap</code> is fine</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2 data-short="Custom errors">Your own error types</h2>
+  <p>In JavaScript you subclass <code>Error</code> and check with <code>instanceof</code>. In Rust you make an enum with one variant per kind of failure. Then callers can <code>match</code> on exactly the cases they care about.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+class NotFoundError extends Error {
+  constructor(public id: number) {
+    super(`user ${id} not found`);
+  }
+}
+
+class InvalidError extends Error {}
+
+function loadUser(id: number): User {
+  if (id === 0) throw new InvalidError("id cannot be 0");
+  throw new NotFoundError(id);
+}
+
+try {
+  loadUser(7);
+} catch (e) {
+  if (e instanceof NotFoundError) {
+    console.log(`no user ${e.id}`);
+  } else {
+    console.log(`error: ${e}`);
+  }
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+use std::fmt;
+
+#[derive(Debug)]
+enum UserError {
+    NotFound(u32),
+    Invalid(String),
+}
+
+impl fmt::Display for UserError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            UserError::NotFound(id) => write!(f, "user {id} not found"),
+            UserError::Invalid(why) => write!(f, "invalid user: {why}"),
+        }
+    }
+}
+
+impl std::error::Error for UserError {}
+
+fn load_user(id: u32) -> Result<User, UserError> {
+    if id == 0 {
+        return Err(UserError::Invalid("id cannot be 0".into()));
+    }
+    Err(UserError::NotFound(id))
+}
+
+match load_user(7) {
+    Ok(user) => println!("hi {}", user.name),
+    Err(UserError::NotFound(id)) => println!("no user {id}"),
+    Err(e) => println!("error: {e}"),
+}
+</script>
+  </div>
+  <p><code>Display</code> gives the error its message. The empty <code>impl std::error::Error</code> marks it as a real error type, so it works with <code>Box&lt;dyn Error&gt;</code> and with other libraries.</p>
+</section>
+
+<section>
+  <h2 data-short="thiserror and anyhow">Less typing: thiserror and anyhow</h2>
+  <p>Writing <code>Display</code> by hand gets old fast. Almost every Rust project uses one or both of these two crates.</p>
+<script type="text/x-code" data-lang="toml" data-title="Cargo.toml">
+[dependencies]
+thiserror = "2"
+anyhow = "1"
+</script>
+
+  <h3>thiserror: define error enums in a few lines</h3>
+  <p>You put the message on each variant as an attribute, and the crate writes the <code>Display</code> and <code>Error</code> code. <code>#[from]</code> also lets <code>?</code> convert another error into your variant automatically.</p>
+<script type="text/x-code" data-lang="rust">
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+enum UserError {
+    #[error("user {0} not found")]
+    NotFound(u32),
+
+    #[error("invalid user: {0}")]
+    Invalid(String),
+
+    #[error("could not read the user file")]
+    Io(#[from] std::io::Error),
+}
+
+fn load_users(path: &str) -> Result<String, UserError> {
+    let text = std::fs::read_to_string(path)?; // io::Error becomes UserError::Io
+    Ok(text)
+}
+</script>
+
+  <h3>anyhow: one error type for your whole app</h3>
+  <p>In an application, you mostly want to bubble errors up and print them with useful context. <code>anyhow::Result&lt;T&gt;</code> accepts any error, and <code>.context()</code> adds a line that explains what you were doing, like wrapping an error with a <code>cause</code> in JavaScript.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+async function readConfig(path: string): Promise<string> {
+  try {
+    return await fs.promises.readFile(path, "utf8");
+  } catch (err) {
+    throw new Error(`could not read config at ${path}`, {
+      cause: err,
+    });
+  }
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+use anyhow::{Context, Result};
+
+fn read_config(path: &str) -> Result<String> {
+    let text = std::fs::read_to_string(path)
+        .with_context(|| format!("could not read config at {path}"))?;
+    Ok(text)
+}
+
+fn main() -> Result<()> {
+    let config = read_config("app.toml")?;
+    println!("{config}");
+    Ok(())
+}
+</script>
+  </div>
+<script type="text/x-code" data-lang="output" data-title="When app.toml is missing (Windows)">
+Error: could not read config at app.toml
+
+Caused by:
+    The system cannot find the file specified. (os error 2)
+</script>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>You are writing</th><th>Use</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>A library others will call</td><td><code>thiserror</code></td><td>Callers can <code>match</code> on your variants</td></tr>
+        <tr><td>An app, CLI or server</td><td><code>anyhow</code></td><td>Easy bubbling with readable context</td></tr>
+        <tr><td>A quick script</td><td><code>Box&lt;dyn Error&gt;</code></td><td>No extra crates</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>With <code>anyhow</code>, use <code>.context("text")</code> for a fixed message and <code>.with_context(|| ...)</code> when you build the message with <code>format!</code>.</p>
+</section>
+
+<section>
+  <h2 data-short="main returns Result">main can return a Result</h2>
+  <p>If <code>main</code> returns <code>Result</code>, you can use <code>?</code> in it. When an error reaches the top, Rust prints <code>Error: </code> followed by the error, and the program exits with code 1. It is similar to an uncaught exception in Node, without the stack trace noise.</p>
+<script type="text/x-code" data-lang="rust">
+use std::error::Error;
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let port = read_port("port.txt")?;
+    println!("listening on {port}");
+    Ok(())
+}
+</script>
+  <p>The <code>Ok(())</code> at the end means "success, with nothing to return". <code>()</code> is the unit type from <a href="variables.html">lesson 2</a>.</p>
+</section>
+
+<section>
+  <h2 data-short="Option and Result together">Moving between Option and Result</h2>
+  <p>You often have an <code>Option</code> but your function returns a <code>Result</code>, or the other way around. These methods convert.</p>
+<script type="text/x-code" data-lang="rust">
+// Option -> Result: give "missing" an error
+let user = find_user(&users, 7).ok_or("user not found")?;
+let user = find_user(&users, 7).ok_or_else(|| UserError::NotFound(7))?;
+
+// Result -> Option: forget the error, keep the value
+let port: Option<u16> = "8080".parse().ok();
+</script>
+  <p>The first line is like writing <code>if (!user) throw new Error("user not found")</code> in JavaScript. Use <code>ok_or_else</code> when building the error takes work, for the same reason as <code>unwrap_or_else</code>.</p>
+
+  <h3>A list of Results becomes a Result of a list</h3>
+  <p>When you parse many items, you usually want "all of them, or the first error". <code>collect()</code> does this when you ask for a <code>Result&lt;Vec&lt;T&gt;, E&gt;</code>. It stops at the first <code>Err</code>.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const inputs = ["1", "2", "x"];
+
+// all or nothing
+const nums = inputs.map((s) => {
+  const n = Number(s);
+  if (Number.isNaN(n)) throw new Error(`bad number: ${s}`);
+  return n;
+});
+
+// keep only the good ones
+const good = inputs.map(Number).filter((n) => !Number.isNaN(n));
+</script>
+<script type="text/x-code" data-lang="rust">
+let inputs = ["1", "2", "x"];
+
+// all or nothing
+let nums: Result<Vec<i32>, _> = inputs.iter().map(|s| s.parse::<i32>()).collect();
+// Err(ParseIntError { kind: InvalidDigit })
+
+// keep only the good ones
+let good: Vec<i32> = inputs.iter().filter_map(|s| s.parse().ok()).collect();
+// [1, 2]
+</script>
+  </div>
+  <p>The same trick works for <code>Option</code>: collecting into <code>Option&lt;Vec&lt;T&gt;&gt;</code> gives <code>None</code> if any item is <code>None</code>. <a href="arrays.html">Lesson 7</a> covers <code>map</code>, <code>filter_map</code> and <code>collect</code>.</p>
+</section>
+
+<section>
+  <h2 data-short="Method table">Method table: the JS habit each one replaces</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Rust</th><th>JavaScript habit</th></tr></thead>
+      <tbody>
+        <tr><td><code>opt.unwrap_or(v)</code></td><td><code>x ?? v</code></td></tr>
+        <tr><td><code>opt.unwrap_or_else(|| f())</code></td><td><code>x ?? f()</code></td></tr>
+        <tr><td><code>opt.unwrap_or_default()</code></td><td><code>x ?? 0</code>, <code>x ?? ""</code></td></tr>
+        <tr><td><code>opt.map(|v| v.len())</code></td><td><code>x?.length</code></td></tr>
+        <tr><td><code>opt.and_then(|v| v.parent())</code></td><td><code>x?.parent()</code>, where <code>parent()</code> can also be missing</td></tr>
+        <tr><td><code>opt.filter(|v| v.active)</code></td><td><code>x?.active ? x : undefined</code></td></tr>
+        <tr><td><code>opt.is_some()</code>, <code>opt.is_none()</code></td><td><code>x != null</code>, <code>x == null</code></td></tr>
+        <tr><td><code>opt.unwrap()</code>, <code>opt.expect("msg")</code></td><td><code>x!</code></td></tr>
+        <tr><td><code>opt?</code></td><td><code>if (x == null) return undefined;</code></td></tr>
+        <tr><td><code>opt.ok_or(err)?</code></td><td><code>if (x == null) throw err;</code></td></tr>
+        <tr><td><code>res?</code></td><td>Let the exception bubble up</td></tr>
+        <tr><td><code>res.map_err(|e| ...)?</code></td><td>Catch and rethrow a different error</td></tr>
+        <tr><td><code>res.unwrap_or(v)</code></td><td><code>try { return f(); } catch { return v; }</code></td></tr>
+        <tr><td><code>res.ok()</code></td><td><code>try { return f(); } catch { return undefined; }</code></td></tr>
+        <tr><td><code>res.is_ok()</code>, <code>res.is_err()</code></td><td>"Did it throw?"</td></tr>
+        <tr><td><code>if let Err(e) = res { ... }</code></td><td><code>catch (e) { ... }</code></td></tr>
+        <tr><td><code>res.context("msg")?</code> (anyhow)</td><td><code>throw new Error("msg", { cause: e })</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>Check yourself</h2>
+  <div class="quiz">
+    <details>
+      <summary>What is the Rust version of <code>user?.email ?? "none"</code>, where <code>user</code> is an <code>Option&lt;&amp;User&gt;</code>?</summary>
+      <div><p><code>user.map(|u| u.email.as_str()).unwrap_or("none")</code>.</p></div>
+    </details>
+    <details>
+      <summary>Where can you use the <code>?</code> operator?</summary>
+      <div><p>Inside a function that returns <code>Result</code> (for <code>Result</code> values) or <code>Option</code> (for <code>Option</code> values). That includes <code>main</code> if it returns a <code>Result</code>.</p></div>
+    </details>
+    <details>
+      <summary>Why is <code>unwrap_or_else(|| load())</code> often better than <code>unwrap_or(load())</code>?</summary>
+      <div><p><code>unwrap_or</code> evaluates <code>load()</code> every time, even when the value exists. The closure in <code>unwrap_or_else</code> runs only when it is needed.</p></div>
+    </details>
+    <details>
+      <summary>A user typed an invalid email. Do you return an <code>Err</code> or call <code>panic!</code>?</summary>
+      <div><p>Return an <code>Err</code>. Bad input is an expected problem. Panics are for bugs in your own code.</p></div>
+    </details>
+    <details>
+      <summary>You are building a CLI tool and want simple errors with context. Which crate do you pick?</summary>
+      <div><p><code>anyhow</code>. Use <code>thiserror</code> when you write a library whose callers need to match on specific error kinds.</p></div>
+    </details>
+  </div>
+</section>
+
+</main>
+<script src="assets/app.js"></script>
+</body>
+</html>

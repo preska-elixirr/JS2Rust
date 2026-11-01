@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Setup and first program · Rust from JS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<script>try{var t=localStorage.getItem('rjs-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body data-page="setup.html">
+<main class="lesson">
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 01 · Getting started</p>
+  <h1>Setup and first program</h1>
+  <p class="lead">You install one tool, create a project with one command, and run it with another. If you have used Node and npm, almost every step has a direct match.</p>
+</header>
+
+<div class="learn">
+  <p>You will learn</p>
+  <ul>
+    <li>How to install Rust with <code>rustup</code> on Windows, macOS and Linux</li>
+    <li>How to set up VS Code so it shows errors while you type</li>
+    <li>What is inside a Rust project, compared to an npm project</li>
+    <li>How to print values with <code>println!</code>, <code>eprintln!</code> and <code>dbg!</code></li>
+    <li>The Cargo commands that replace your npm scripts</li>
+  </ul>
+</div>
+
+<section>
+  <h2 data-short="Install">Install Rust with rustup</h2>
+  <p>In JavaScript you might use <code>nvm</code> to install and switch Node versions. Rust has the same kind of tool, called <code>rustup</code>. It installs the compiler (<code>rustc</code>), the build tool (<code>cargo</code>) and the standard library, and it keeps them up to date.</p>
+
+  <h3>Windows</h3>
+  <ol>
+    <li>Go to <a href="https://rustup.rs" target="_blank" rel="noopener">rustup.rs</a> and download <code>rustup-init.exe</code>.</li>
+    <li>Run it. If it says you need the Visual Studio C++ Build Tools, let it install them. Rust uses Microsoft's linker (the tool that glues compiled code into an <code>.exe</code>) on Windows.</li>
+    <li>Pick the default option (<kbd>1</kbd>) when the installer asks.</li>
+    <li>Close your terminal and open a new one, so it picks up the new <code>PATH</code>.</li>
+  </ol>
+  <p>If you prefer the command line, <code>winget</code> does the same job:</p>
+<script type="text/x-code" data-lang="bash" data-title="PowerShell">
+winget install Rustlang.Rustup
+</script>
+
+  <h3>macOS and Linux</h3>
+  <p>Run this one command and pick the default option:</p>
+<script type="text/x-code" data-lang="bash">
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+</script>
+  <p>On macOS you may also need the Xcode command line tools for the linker. Run <code>xcode-select --install</code> if the build later complains about a missing <code>cc</code>.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Job</th><th>JavaScript world</th><th>Rust world</th></tr></thead>
+      <tbody>
+        <tr><td>Install and switch versions</td><td><code>nvm</code>, <code>fnm</code>, <code>volta</code></td><td><code>rustup</code></td></tr>
+        <tr><td>Run or compile code</td><td><code>node</code>, <code>tsc</code></td><td><code>rustc</code> (Cargo calls it for you)</td></tr>
+        <tr><td>Packages, scripts, building</td><td><code>npm</code>, <code>pnpm</code>, <code>yarn</code></td><td><code>cargo</code></td></tr>
+        <tr><td>Package registry</td><td>npmjs.com</td><td>crates.io</td></tr>
+        <tr><td>Update the toolchain</td><td><code>nvm install --lts</code></td><td><code>rustup update</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2 data-short="Check it works">Check that it works</h2>
+  <p>Open a new terminal and ask both tools for their version. Your numbers will be different. Any version means the install worked.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="bash" data-title="Node">
+node --version
+npm --version
+</script>
+<script type="text/x-code" data-lang="bash" data-title="Rust">
+rustc --version
+cargo --version
+</script>
+  </div>
+<script type="text/x-code" data-lang="output">
+rustc 1.xx.0 (a1b2c3d4e 2026-10-01)
+cargo 1.xx.0 (f5e6d7c8b 2026-09-20)
+</script>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p>"command not found" or "'cargo' is not recognized" almost always means the terminal is older than the install. Close every terminal window, including the one inside VS Code, and open a fresh one.</p>
+  </aside>
+  <p>Rust ships a new stable version every six weeks. Run <code>rustup update</code> now and then. Old code keeps compiling, because Rust takes backwards compatibility seriously.</p>
+</section>
+
+<section>
+  <h2 data-short="Editor">Set up your editor</h2>
+  <p>Use VS Code and install one extension: <strong>rust-analyzer</strong>. It is the official language server, the Rust version of the TypeScript service that powers your autocomplete and red squiggles.</p>
+  <ul>
+    <li>It shows compiler errors as you type, so you rarely need to run a build to find them.</li>
+    <li>It shows inferred types as grey hints next to your variables. This helps a lot while you learn.</li>
+    <li>Hover over any function or type to read its docs.</li>
+  </ul>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p>Do not install the old extension called just "Rust". It is deprecated. You want "rust-analyzer" by The Rust Programming Language. Turn on "Format on Save" too. It runs <code>rustfmt</code>, which works like Prettier.</p>
+  </aside>
+  <p>JetBrains users can use RustRover. Zed, Neovim and Helix all support rust-analyzer out of the box.</p>
+</section>
+
+<section>
+  <h2 data-short="New project">Create your first project</h2>
+  <p>In Node you run <code>npm init -y</code> and then write an <code>index.js</code> yourself. Cargo creates the folder, the config file, a working Hello World and a git repo in one step.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="bash" data-title="Node">
+mkdir hello
+cd hello
+npm init -y
+echo 'console.log("Hello, world!")' > index.js
+node index.js
+</script>
+<script type="text/x-code" data-lang="bash" data-title="Rust">
+cargo new hello
+cd hello
+cargo run
+</script>
+  </div>
+<script type="text/x-code" data-lang="output" data-title="Output of cargo run">
+   Compiling hello v0.1.0 (/home/you/hello)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.61s
+     Running `target/debug/hello`
+Hello, world!
+</script>
+  <p><code>cargo run</code> did two things. It compiled your code into a program, then it ran that program. The first build of a project is slower. After that Cargo only rebuilds what changed.</p>
+  <p>Want a library instead of a program? <code>cargo new mylib --lib</code> creates <code>src/lib.rs</code> instead of <code>src/main.rs</code>. That is the Rust version of a package you publish to npm.</p>
+</section>
+
+<section>
+  <h2 data-short="Project anatomy">What is inside a project</h2>
+  <p>Here is what Cargo made, next to a typical TypeScript project.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="text" data-title="TypeScript project">
+my-app/
+├── package.json
+├── package-lock.json
+├── tsconfig.json
+├── node_modules/
+├── dist/
+└── src/
+    └── index.ts
+</script>
+<script type="text/x-code" data-lang="text" data-title="Rust project">
+hello/
+├── Cargo.toml
+├── Cargo.lock
+├── .gitignore
+├── target/
+└── src/
+    └── main.rs
+</script>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Rust file</th><th>JS match</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>Cargo.toml</code></td><td><code>package.json</code></td><td>Name, version and dependencies. Written in TOML, not JSON.</td></tr>
+        <tr><td><code>Cargo.lock</code></td><td><code>package-lock.json</code></td><td>Exact versions of every dependency. Commit it for programs.</td></tr>
+        <tr><td><code>src/main.rs</code></td><td><code>src/index.ts</code></td><td>The entry point of a program.</td></tr>
+        <tr><td><code>src/lib.rs</code></td><td>the <code>main</code> file of a library</td><td>The entry point of a library crate.</td></tr>
+        <tr><td><code>target/</code></td><td><code>dist/</code> + build cache</td><td>Compiled output. Git ignores it. It gets big, delete it with <code>cargo clean</code>.</td></tr>
+        <tr><td>no folder</td><td><code>node_modules/</code></td><td>Cargo keeps downloaded crates in one shared cache in your home folder, not per project.</td></tr>
+        <tr><td>no file</td><td><code>tsconfig.json</code></td><td>Rust has no separate compiler config for most projects. Settings live in <code>Cargo.toml</code>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Open <code>Cargo.toml</code>. It is short:</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="text" data-title="package.json">
+{
+  "name": "hello",
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {}
+}
+</script>
+<script type="text/x-code" data-lang="toml" data-title="Cargo.toml">
+[package]
+name = "hello"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+</script>
+  </div>
+  <p>The <code>edition</code> line picks a set of language rules. Editions come out every few years (2015, 2018, 2021, 2024). New Cargo versions use the newest one. Crates from different editions work together, so you do not need to think about it as a beginner.</p>
+</section>
+
+<section>
+  <h2 data-short="main">main is the entry point</h2>
+  <p>A Node script runs from top to bottom. Any line at the top level of the file runs. Rust does not work that way. A program always starts by calling a function named <code>main</code>, and the top level of a file can only hold definitions (functions, structs, constants, imports).</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts" data-title="index.ts">
+// Top-level code runs right away
+const name = "world";
+console.log(`Hello, ${name}!`);
+</script>
+<script type="text/x-code" data-lang="rust" data-title="src/main.rs">
+// Only definitions at the top level.
+// The program starts here:
+fn main() {
+    let name = "world";
+    println!("Hello, {name}!");
+}
+</script>
+  </div>
+  <ul>
+    <li><code>fn</code> declares a function, like <code>function</code>.</li>
+    <li><code>main</code> takes no arguments and returns nothing. Command line arguments come from <code>std::env::args()</code> instead, the Rust version of <code>process.argv</code>.</li>
+    <li>The program ends when <code>main</code> returns. There is no event loop that keeps it alive.</li>
+  </ul>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p>Writing <code>let x = 5;</code> at the top of a file, outside any function, is a compile error. Use <code>const</code> for top-level values, as you saw in <a href="variables.html">lesson 2</a>.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="Printing">Printing: println! vs console.log</h2>
+  <p><code>println!</code> is the everyday way to print a line. The <code>!</code> means it is a macro, not a normal function. A macro is code that writes code at compile time. For now, read the <code>!</code> as "special function" and move on.</p>
+  <p>The big difference from <code>console.log</code>: the first argument is always a format string. Each <code>{}</code> in it is a slot that the next argument fills. You can also write a variable name inside the braces, which looks a lot like a template literal.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const name = "Ana";
+const age = 31;
+
+console.log("Hello");
+console.log(name, age);
+console.log(`${name} is ${age}`);
+console.log("Price: " + (9.5).toFixed(2));
+</script>
+<script type="text/x-code" data-lang="rust">
+let name = "Ana";
+let age = 31;
+
+println!("Hello");
+println!("{} {}", name, age);
+println!("{name} is {age}");
+println!("Price: {:.2}", 9.5);
+</script>
+  </div>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p><code>println!(name)</code> does not compile. The first argument must be a string literal. Write <code>println!("{name}")</code> or <code>println!("{}", name)</code>.</p>
+  </aside>
+
+  <h3>Display vs Debug</h3>
+  <p><code>console.log</code> prints anything, including objects and arrays. Rust has two ways to print a value, and a type has to opt in to each one.</p>
+  <ul>
+    <li><code>{}</code> uses <strong>Display</strong>, the clean form for users. Numbers and strings have it. Lists and your own structs do not.</li>
+    <li><code>{:?}</code> uses <strong>Debug</strong>, the developer form. Lists, options and most standard types have it.</li>
+    <li><code>{:#?}</code> is Debug, pretty printed over several lines. It is the closest thing to <code>console.log</code> of a big object.</li>
+  </ul>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const scores = [90, 72, 88];
+console.log(scores);
+// [ 90, 72, 88 ]
+
+const user = { name: "Ana", admin: true };
+console.log(user);
+// { name: 'Ana', admin: true }
+</script>
+<script type="text/x-code" data-lang="rust">
+let scores = vec![90, 72, 88];
+println!("{:?}", scores);
+// [90, 72, 88]
+
+#[derive(Debug)]
+struct User { name: String, admin: bool }
+
+let user = User { name: "Ana".to_string(), admin: true };
+println!("{:#?}", user);
+</script>
+  </div>
+<script type="text/x-code" data-lang="output" data-title="Output of {:#?}">
+User {
+    name: "Ana",
+    admin: true,
+}
+</script>
+  <p><code>#[derive(Debug)]</code> asks the compiler to write the Debug code for your struct. You will put it on almost every struct you write. Structs get their own page in <a href="objects.html">lesson 8</a>.</p>
+
+  <h3>Format options</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Format string</th><th>Prints</th><th>JS way</th></tr></thead>
+      <tbody>
+        <tr><td><code>{}</code></td><td>the value for users</td><td><code>`${x}`</code></td></tr>
+        <tr><td><code>{name}</code></td><td>the variable <code>name</code></td><td><code>`${name}`</code></td></tr>
+        <tr><td><code>{0} {1} {0}</code></td><td>arguments by position, reused</td><td>no match</td></tr>
+        <tr><td><code>{:?}</code></td><td>debug form</td><td><code>console.log(x)</code></td></tr>
+        <tr><td><code>{:#?}</code></td><td>pretty debug form</td><td><code>JSON.stringify(x, null, 2)</code></td></tr>
+        <tr><td><code>{:.2}</code></td><td>2 decimal places</td><td><code>x.toFixed(2)</code></td></tr>
+        <tr><td><code>{:&gt;8}</code></td><td>right-aligned in 8 columns</td><td><code>String(x).padStart(8)</code></td></tr>
+        <tr><td><code>{:&lt;8}</code></td><td>left-aligned in 8 columns</td><td><code>String(x).padEnd(8)</code></td></tr>
+        <tr><td><code>{:05}</code></td><td>pad with zeros to 5 digits</td><td><code>String(x).padStart(5, "0")</code></td></tr>
+        <tr><td><code>{{</code> and <code>}}</code></td><td>a literal brace</td><td>just type it</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Need the text as a value instead of printing it? <code>format!</code> takes the same arguments and returns a <code>String</code>. It is your template literal: <code>let msg = format!("{name} is {age}");</code>. <a href="strings.html">Lesson 6</a> covers strings in depth.</p>
+</section>
+
+<section>
+  <h2 data-short="Debug prints">Debugging prints: eprintln! and dbg!</h2>
+  <p>JavaScript has <code>console.error</code> for errors. Rust has <code>eprintln!</code>, which prints to stderr (the error stream) instead of stdout. Use it for errors and logs, so they do not mix with the real output of your program.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+console.error("Could not open config file");
+</script>
+<script type="text/x-code" data-lang="rust">
+eprintln!("Could not open config file");
+</script>
+  </div>
+  <p><code>dbg!</code> is a debugging gift with no exact JS match. It prints the file, the line, the code you passed in and its value. Then it returns the value, so you can wrap it around any expression without changing your code's behavior.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const x = 5;
+const y = x * 2;
+console.log("y =", y);   // you write the label yourself
+const z = y + 1;
+</script>
+<script type="text/x-code" data-lang="rust">
+let x = 5;
+let y = dbg!(x * 2);     // prints and returns 10
+let z = y + 1;
+</script>
+  </div>
+<script type="text/x-code" data-lang="output" data-title="Printed to stderr">
+[src/main.rs:2:13] x * 2 = 10
+</script>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p><code>dbg!</code> uses the Debug format, so it works on lists and on any struct with <code>#[derive(Debug)]</code>. Remove your <code>dbg!</code> calls before you commit, the same way you remove stray <code>console.log</code> lines.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Comments and doc comments</h2>
+  <p>Normal comments are the same as in JavaScript. Doc comments use three slashes instead of the <code>/** */</code> JSDoc style, and they support Markdown.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+// A line comment
+/* A block comment */
+
+/**
+ * Adds two numbers.
+ *
+ * @example
+ * add(2, 3); // 5
+ */
+function add(a: number, b: number): number {
+  return a + b;
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+// A line comment
+/* A block comment */
+
+/// Adds two numbers.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(hello::add(2, 3), 5);
+/// ```
+pub fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+</script>
+  </div>
+  <ul>
+    <li><code>///</code> documents the item right below it. rust-analyzer shows it when you hover.</li>
+    <li><code>//!</code> documents the whole file or crate. You put it at the top of <code>lib.rs</code>.</li>
+    <li><code>cargo doc --open</code> turns your doc comments into a website, the same kind you see on <a href="https://docs.rs" target="_blank" rel="noopener">docs.rs</a>.</li>
+    <li>The code inside a doc example is a real test. In a library crate, <code>cargo test</code> runs it, so examples in docs never go stale.</li>
+  </ul>
+</section>
+
+<section>
+  <h2 data-short="Cargo commands">Cargo commands vs npm commands</h2>
+  <p>In npm you write scripts in <code>package.json</code> for building, testing and linting. Cargo has all of these built in, so every Rust project uses the same commands.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Task</th><th>npm</th><th>Cargo</th></tr></thead>
+      <tbody>
+        <tr><td>Create a project</td><td><code>npm init</code></td><td><code>cargo new name</code></td></tr>
+        <tr><td>Run the program</td><td><code>npm start</code>, <code>node index.js</code></td><td><code>cargo run</code></td></tr>
+        <tr><td>Pass arguments to it</td><td><code>npm start -- --port 3000</code></td><td><code>cargo run -- --port 3000</code></td></tr>
+        <tr><td>Build for development</td><td><code>npm run build</code></td><td><code>cargo build</code></td></tr>
+        <tr><td>Build for production</td><td><code>NODE_ENV=production npm run build</code></td><td><code>cargo build --release</code></td></tr>
+        <tr><td>Type check only, no output</td><td><code>tsc --noEmit</code></td><td><code>cargo check</code></td></tr>
+        <tr><td>Run tests</td><td><code>npm test</code> (Jest, Vitest)</td><td><code>cargo test</code></td></tr>
+        <tr><td>Format code</td><td><code>npx prettier --write .</code></td><td><code>cargo fmt</code></td></tr>
+        <tr><td>Lint</td><td><code>npx eslint .</code></td><td><code>cargo clippy</code></td></tr>
+        <tr><td>Add a dependency</td><td><code>npm install axios</code></td><td><code>cargo add reqwest</code></td></tr>
+        <tr><td>Remove a dependency</td><td><code>npm uninstall axios</code></td><td><code>cargo remove reqwest</code></td></tr>
+        <tr><td>Update dependencies</td><td><code>npm update</code></td><td><code>cargo update</code></td></tr>
+        <tr><td>Open docs of your deps</td><td>search the web</td><td><code>cargo doc --open</code></td></tr>
+        <tr><td>Delete build output</td><td><code>rm -rf dist</code></td><td><code>cargo clean</code></td></tr>
+        <tr><td>Install a global tool</td><td><code>npm install -g pkg</code></td><td><code>cargo install pkg</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>Debug vs release builds</h3>
+  <p><code>cargo build</code> makes a debug build in <code>target/debug/</code>. It compiles fast, runs slower, and checks for number overflow. <code>cargo build --release</code> makes an optimized build in <code>target/release/</code>. It compiles slower and can run 10 to 100 times faster. Use debug while you work, and release when you measure speed or ship.</p>
+<script type="text/x-code" data-lang="bash">
+cargo build --release
+./target/release/hello        # on Windows: .\target\release\hello.exe
+</script>
+  <p>That file is the whole program. You can copy it to another machine with the same operating system and run it there. No Node install, no <code>node_modules</code>.</p>
+  <aside class="callout note">
+    <p class="callout-title">Mental model</p>
+    <p><code>cargo clippy</code> is ESLint with a very good rule set already turned on. Run it often while you learn. Its suggestions teach you idiomatic Rust, and each one links to an explanation.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="Work loop">The edit, check, run loop</h2>
+  <p>With Node you save the file and run it. With Rust there is a compile step in between, so a good loop looks like this:</p>
+  <ol>
+    <li>Write code. rust-analyzer underlines mistakes as you type.</li>
+    <li>Run <code>cargo check</code> when you want the full list of errors. It skips making a program, so it is much faster than a build.</li>
+    <li>Fix errors from the top. One early mistake often causes several errors below it.</li>
+    <li>Run <code>cargo run</code> once it compiles.</li>
+  </ol>
+  <p>Here is a slightly bigger first program to try. Replace <code>src/main.rs</code> with it and run <code>cargo run</code>.</p>
+<script type="text/x-code" data-lang="rust" data-title="src/main.rs">
+fn main() {
+    let name = "Rustacean";
+    let languages = vec!["JavaScript", "TypeScript", "Rust"];
+
+    println!("Hello, {name}!");
+    println!("You know {} languages:", languages.len());
+
+    for lang in &languages {
+        println!("  - {lang}");
+    }
+
+    let years = 3;
+    let months = dbg!(years * 12);
+    println!("That is {months} months of practice.");
+}
+</script>
+<script type="text/x-code" data-lang="output">
+Hello, Rustacean!
+You know 3 languages:
+  - JavaScript
+  - TypeScript
+  - Rust
+[src/main.rs:13:18] years * 12 = 36
+That is 36 months of practice.
+</script>
+  <p>Do not worry about the <code>&amp;</code> in <code>&amp;languages</code> yet. <a href="control-flow.html">Lesson 4</a> explains loops, and <a href="ownership.html">lesson 5</a> explains the <code>&amp;</code>.</p>
+
+  <h3>No install? Use the Playground</h3>
+  <p>The <a href="https://play.rust-lang.org" target="_blank" rel="noopener">Rust Playground</a> runs Rust in your browser. Paste any example from this guide inside a <code>fn main() { }</code> and press Run. It also has buttons for Clippy and rustfmt, and it can share a link to your code.</p>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p>Many examples in this guide skip the <code>fn main() { ... }</code> wrapper to stay short. If you paste one and get an error about statements at the top level, wrap the code in <code>fn main()</code>.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Check yourself</h2>
+  <div class="quiz">
+    <details>
+      <summary>Which file is the Rust version of <code>package.json</code>?</summary>
+      <div><p><code>Cargo.toml</code>. It holds the package name, version and dependencies, written in TOML.</p></div>
+    </details>
+    <details>
+      <summary>How do you print a list like <code>vec![1, 2, 3]</code>?</summary>
+      <div><p>Use the Debug format: <code>println!("{:?}", list)</code>. Plain <code>{}</code> does not work for lists, because they do not have a Display form.</p></div>
+    </details>
+    <details>
+      <summary>What is the fastest command to see all compile errors?</summary>
+      <div><p><code>cargo check</code>. It runs the compiler's checks but skips making a program.</p></div>
+    </details>
+    <details>
+      <summary>Why does <code>let x = 5;</code> at the top of <code>main.rs</code> fail?</summary>
+      <div><p>The top level of a Rust file only holds definitions. Code runs inside <code>fn main()</code>. Use <code>const X: i32 = 5;</code> for a top-level value.</p></div>
+    </details>
+    <details>
+      <summary>What does <code>dbg!(a + b)</code> return?</summary>
+      <div><p>The value of <code>a + b</code>. It prints the file, line, expression and value to stderr, then hands the value back, so you can wrap it around code without changing what the code does.</p></div>
+    </details>
+  </div>
+</section>
+
+</main>
+<script src="assets/app.js"></script>
+</body>
+</html>

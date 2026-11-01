@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ownership and borrowing · Rust from JS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<script>try{var t=localStorage.getItem('rjs-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body data-page="ownership.html">
+<main class="lesson">
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 05 · The new idea</p>
+  <h1>Ownership and borrowing</h1>
+  <p class="lead">JavaScript has nothing like this. Every Rust value has one owner, and the owner frees it. Once this idea clicks, the rest of Rust stops feeling strange.</p>
+</header>
+
+<div class="learn">
+  <p>You will learn</p>
+  <ul>
+    <li>Why Rust has no garbage collector, and what it does instead</li>
+    <li>What the stack and the heap are, in plain terms</li>
+    <li>Why <code>let b = a;</code> moves a value instead of sharing it</li>
+    <li>How to borrow with <code>&amp;</code> and <code>&amp;mut</code>, and the "many readers or one writer" rule</li>
+    <li>What lifetimes are, and how to read the borrow checker's errors</li>
+  </ul>
+</div>
+
+<section>
+  <h2 data-short="No garbage collector">Why Rust has no garbage collector</h2>
+  <p>Every program has to free memory it no longer needs. Languages pick one of three ways to do it.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Strategy</th><th>Languages</th><th>Who frees memory</th><th>The cost</th></tr></thead>
+      <tbody>
+        <tr><td>Manual</td><td>C, C++</td><td>You call <code>free()</code> yourself</td><td>Forget it and you leak. Do it twice and you crash.</td></tr>
+        <tr><td>Garbage collector</td><td>JavaScript, Java, Go, Python</td><td>A background process that scans for unused values</td><td>Extra memory and CPU, plus short pauses you cannot control.</td></tr>
+        <tr><td>Ownership</td><td>Rust</td><td>The compiler inserts the free at the right spot</td><td>You follow a few rules. The compiler checks them.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>In JavaScript you create objects and forget about them. Some time later the garbage collector notices that nothing points to an object and frees it. That is easy for you, but the engine does work at runtime to make it happen.</p>
+  <p>Rust decides at compile time where each value gets freed. There is no collector running next to your program. That is a big reason Rust programs are fast and use little memory.</p>
+  <aside class="callout note">
+    <p class="callout-title">Mental model</p>
+    <p>Ownership is the compiler doing the garbage collector's job before the program runs. To do that job, it needs your code to follow clear rules about who owns what.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>The stack and the heap</h2>
+  <p>Memory comes in two kinds. JavaScript hides both from you. In Rust you need a rough picture of them, because ownership is about the heap.</p>
+  <ul>
+    <li><strong>The stack</strong> holds values with a size known at compile time: numbers, booleans, chars. Each function call gets a slot. When the function returns, its slot is gone. This is very fast and needs no cleanup.</li>
+    <li><strong>The heap</strong> holds data that can grow or whose size is unknown in advance: the text of a <code>String</code>, the items of a <code>Vec</code>. Something has to free it when it is no longer needed. That something is the owner.</li>
+  </ul>
+  <figure class="diagram">
+    <svg viewBox="0 0 780 310" role="img" aria-label="The stack holds age directly and a String as pointer, length and capacity. The pointer points to the text bytes on the heap.">
+      <defs>
+        <marker id="arr-o1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="d-arrow"/>
+        </marker>
+      </defs>
+      <text x="20" y="26" font-size="15" font-weight="600">Stack</text>
+      <text x="460" y="26" font-size="15" font-weight="600">Heap</text>
+
+      <rect x="20" y="40" width="340" height="232" rx="10" class="d-box"/>
+      <text x="36" y="64" font-size="12" class="d-mono d-muted">fn main()</text>
+
+      <rect x="36" y="78" width="308" height="44" rx="7" class="d-tip"/>
+      <text x="50" y="105" font-size="13" class="d-mono">age: i32</text>
+      <text x="328" y="105" font-size="13" text-anchor="end" class="d-mono">30</text>
+
+      <rect x="36" y="136" width="308" height="122" rx="7" class="d-rs"/>
+      <text x="50" y="160" font-size="13" font-weight="600" class="d-mono">name: String</text>
+      <text x="50" y="186" font-size="12" class="d-mono d-muted">ptr</text>
+      <text x="50" y="212" font-size="12" class="d-mono d-muted">len</text>
+      <text x="328" y="212" font-size="12" text-anchor="end" class="d-mono">3</text>
+      <text x="50" y="238" font-size="12" class="d-mono d-muted">capacity</text>
+      <text x="328" y="238" font-size="12" text-anchor="end" class="d-mono">3</text>
+      <circle cx="322" cy="182" r="5" class="d-t-rs"/>
+
+      <rect x="460" y="40" width="300" height="232" rx="10" class="d-box"/>
+      <text x="580" y="146" font-size="12" text-anchor="middle" class="d-muted">the text lives here</text>
+      <rect x="490" y="158" width="56" height="44" rx="6" class="d-rs"/>
+      <rect x="552" y="158" width="56" height="44" rx="6" class="d-rs"/>
+      <rect x="614" y="158" width="56" height="44" rx="6" class="d-rs"/>
+      <text x="518" y="186" font-size="14" text-anchor="middle" class="d-mono">A</text>
+      <text x="580" y="186" font-size="14" text-anchor="middle" class="d-mono">n</text>
+      <text x="642" y="186" font-size="14" text-anchor="middle" class="d-mono">a</text>
+      <text x="518" y="220" font-size="11" text-anchor="middle" class="d-mono d-muted">0</text>
+      <text x="580" y="220" font-size="11" text-anchor="middle" class="d-mono d-muted">1</text>
+      <text x="642" y="220" font-size="11" text-anchor="middle" class="d-mono d-muted">2</text>
+
+      <path d="M328,182 C400,182 420,180 486,180" class="d-line-rs" stroke-width="1.8" marker-end="url(#arr-o1)"/>
+
+      <text x="190" y="296" font-size="12" text-anchor="middle" class="d-muted">Fixed size. Freed when the function ends.</text>
+      <text x="610" y="296" font-size="12" text-anchor="middle" class="d-muted">Any size, can grow. The owner frees it.</text>
+    </svg>
+    <figcaption>A <code>String</code> is a small fixed-size record on the stack that points to its text on the heap.</figcaption>
+  </figure>
+<script type="text/x-code" data-lang="rust">
+fn main() {
+    let age: i32 = 30;                    // lives on the stack
+    let name = String::from("Ana");       // record on the stack, text on the heap
+}   // main ends: the stack slot goes away, and Rust frees the heap text too
+</script>
+</section>
+
+<section>
+  <h2>The three ownership rules</h2>
+  <p>That is the whole system. Everything else on this page follows from these three lines.</p>
+  <ol>
+    <li>Each value has one variable that owns it.</li>
+    <li>A value has exactly one owner at a time.</li>
+    <li>When the owner goes out of scope, Rust frees the value.</li>
+  </ol>
+  <p>"Out of scope" means the closing curly brace of the block where the variable lives. Rule 3 is how memory gets freed without a garbage collector. Rule 2 makes sure the same memory is never freed twice.</p>
+</section>
+
+<section>
+  <h2 data-short="Moves">JavaScript shares, Rust moves</h2>
+  <p>Here is the first real surprise. In JavaScript, assigning an object to another variable copies the reference. Both variables point to the same object. In Rust, assigning a heap value moves it. The new variable becomes the owner, and the old one is no longer usable.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const a = { name: "Ana" };
+const b = a;              // b points to the SAME object
+
+b.name = "Bo";
+console.log(a.name);      // "Bo"  (surprise for beginners)
+console.log(b.name);      // "Bo"
+</script>
+<script type="text/x-code" data-lang="rust">
+let a = String::from("Ana");
+let b = a;                // ownership MOVES from a to b
+
+println!("{b}");          // "Ana"
+println!("{a}");          // compile error E0382:
+                          // borrow of moved value: `a`
+</script>
+  </div>
+  <figure class="diagram">
+    <svg viewBox="0 0 830 260" role="img" aria-label="In JavaScript, a and b both point to one object. In Rust, b owns the heap text and a is moved and unusable.">
+      <defs>
+        <marker id="arr-o2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="d-arrow"/>
+        </marker>
+      </defs>
+      <text x="20" y="26" font-size="14" font-weight="600" class="d-t-js">JavaScript: const b = a</text>
+      <rect x="20" y="50" width="90" height="40" rx="7" class="d-js"/>
+      <text x="65" y="75" font-size="14" text-anchor="middle" class="d-mono">a</text>
+      <rect x="20" y="130" width="90" height="40" rx="7" class="d-js"/>
+      <text x="65" y="155" font-size="14" text-anchor="middle" class="d-mono">b</text>
+      <rect x="210" y="80" width="170" height="64" rx="8" class="d-box"/>
+      <text x="295" y="117" font-size="12" text-anchor="middle" class="d-mono">{ name: "Ana" }</text>
+      <line x1="110" y1="70" x2="207" y2="100" class="d-line-js" stroke-width="1.6" marker-end="url(#arr-o2)"/>
+      <line x1="110" y1="150" x2="207" y2="128" class="d-line-js" stroke-width="1.6" marker-end="url(#arr-o2)"/>
+      <text x="200" y="212" font-size="12" text-anchor="middle">Two names, one object.</text>
+      <text x="200" y="230" font-size="12" text-anchor="middle" class="d-muted">A change through b shows up in a.</text>
+
+      <line x1="415" y1="20" x2="415" y2="240" class="d-line" stroke-dasharray="4 5"/>
+
+      <text x="450" y="26" font-size="14" font-weight="600" class="d-t-rs">Rust: let b = a;</text>
+      <rect x="450" y="50" width="160" height="40" rx="7" class="d-warn"/>
+      <text x="530" y="75" font-size="13" text-anchor="middle" class="d-mono d-t-warn">a (moved)</text>
+      <rect x="450" y="120" width="160" height="64" rx="7" class="d-rs"/>
+      <text x="530" y="144" font-size="13" text-anchor="middle" class="d-mono">b: String</text>
+      <text x="530" y="166" font-size="11" text-anchor="middle" class="d-mono d-muted">ptr, len 3, cap 3</text>
+      <rect x="680" y="128" width="130" height="48" rx="7" class="d-rs"/>
+      <text x="745" y="157" font-size="14" text-anchor="middle" class="d-mono">Ana</text>
+      <line x1="610" y1="152" x2="677" y2="152" class="d-line-rs" stroke-width="1.8" marker-end="url(#arr-o2)"/>
+      <text x="630" y="212" font-size="12" text-anchor="middle">One owner at a time.</text>
+      <text x="630" y="230" font-size="12" text-anchor="middle" class="d-muted">The compiler stops any later use of a.</text>
+    </svg>
+    <figcaption>Rust copies the small stack record into <code>b</code> and marks <code>a</code> as moved. The heap text is not copied.</figcaption>
+  </figure>
+  <p>Why not let both own it? Because of rule 3. At the end of the scope Rust would free the text once for <code>a</code> and once for <code>b</code>. Freeing memory twice is a classic C bug that can crash a program or open a security hole. Moving makes it impossible.</p>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p>A move is silent. <code>let b = a;</code> looks exactly like a JavaScript assignment. You only find out when you use <code>a</code> again and the compiler says "value moved here". Read the error: it shows the line where the move happened.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="Copy types">Small values are copied, not moved</h2>
+  <p>If moving were the rule for everything, <code>let y = x;</code> with numbers would be painful. It is not. Types that live fully on the stack and are cheap to duplicate implement the <code>Copy</code> trait. Assigning them makes a real copy, and both variables stay usable.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+let x = 5;
+let y = x;      // primitives are copied in JS too
+y += 1;
+console.log(x, y);  // 5 6
+</script>
+<script type="text/x-code" data-lang="rust">
+let x = 5;
+let y = x;      // i32 is Copy: x is still fine
+let mut y = y;
+y += 1;
+println!("{x} {y}"); // 5 6
+</script>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Copied on assignment (Copy)</th><th>Moved on assignment</th></tr></thead>
+      <tbody>
+        <tr><td>All integers and floats: <code>i32</code>, <code>u8</code>, <code>f64</code> ...</td><td><code>String</code></td></tr>
+        <tr><td><code>bool</code> and <code>char</code></td><td><code>Vec&lt;T&gt;</code>, <code>HashMap</code>, <code>HashSet</code></td></tr>
+        <tr><td>Shared references <code>&amp;T</code>, including <code>&amp;str</code></td><td><code>Box&lt;T&gt;</code> and other owning pointers</td></tr>
+        <tr><td>Tuples and arrays made only of Copy types, like <code>(i32, bool)</code> or <code>[u8; 4]</code></td><td>Your own structs and enums, unless you add <code>#[derive(Clone, Copy)]</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>This lines up with JavaScript better than it looks. JS primitives (numbers, booleans) are copied. JS objects and arrays are shared by reference. In Rust the same "big" values are moved instead of shared.</p>
+</section>
+
+<section>
+  <h2 data-short="clone">clone: an explicit deep copy</h2>
+  <p>When you really want two independent copies, ask for one with <code>.clone()</code>. It copies the heap data too, so it costs time and memory. That is why Rust makes you write it: a clone is always visible in the code.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const a = { name: "Ana", tags: ["admin"] };
+const b = structuredClone(a);   // deep copy
+b.tags.push("editor");
+
+console.log(a.tags);  // ["admin"]
+console.log(b.tags);  // ["admin", "editor"]
+</script>
+<script type="text/x-code" data-lang="rust">
+let a = vec![String::from("admin")];
+let mut b = a.clone();          // deep copy
+b.push(String::from("editor"));
+
+println!("{:?}", a);  // ["admin"]
+println!("{:?}", b);  // ["admin", "editor"]
+</script>
+  </div>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p>As a beginner, cloning is fine. If the borrow checker blocks you and a <code>.clone()</code> makes the error go away, take it and keep going. Most programs are fast enough with a few extra clones. You can remove them later, once borrowing feels natural.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="Functions">Passing values to functions moves them</h2>
+  <p>Calling a function works like assignment. Passing a <code>String</code> into a function moves it into the parameter. When the function ends, the parameter goes out of scope and the text is freed. The caller cannot use it anymore.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+function greet(name) {
+  console.log(`Hello, ${name}`);
+}
+
+const name = "Ana";
+greet(name);
+console.log(name);   // still fine
+</script>
+<script type="text/x-code" data-lang="rust">
+fn greet(name: String) {
+    println!("Hello, {name}");
+}   // name is freed here
+
+let name = String::from("Ana");
+greet(name);         // name moves into greet
+println!("{name}");  // error E0382: borrow of moved value: `name`
+</script>
+  </div>
+  <p>A function can hand ownership back by returning the value. This works, but passing things in and out all the time gets clumsy fast.</p>
+<script type="text/x-code" data-lang="rust">
+fn shout(text: String) -> String {
+    text.to_uppercase()          // a new String goes back to the caller
+}
+
+let word = String::from("hi");
+let loud = shout(word);          // word moved in, loud is the new owner
+println!("{loud}");              // HI
+</script>
+  <p>The real fix for <code>greet</code> is to let the function look at the value without owning it. That is borrowing.</p>
+</section>
+
+<section>
+  <h2 data-short="Borrowing with &amp;">Borrowing with &amp;</h2>
+  <p>A reference lets code use a value without taking ownership. You make one with <code>&amp;</code>. Rust calls this borrowing, because the value has to go back to its owner. When the borrow ends, nothing is freed. The owner still owns it.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+function greet(name) {
+  console.log(`Hello, ${name}`);
+}
+
+const name = "Ana";
+greet(name);
+greet(name);         // call it as often as you like
+</script>
+<script type="text/x-code" data-lang="rust">
+fn greet(name: &str) {          // borrows, does not own
+    println!("Hello, {name}");
+}
+
+let name = String::from("Ana");
+greet(&name);                   // lend it out
+greet(&name);                   // still ours, lend it again
+</script>
+  </div>
+  <p>The parameter type is <code>&amp;str</code>, a borrowed piece of text. A <code>&amp;String</code> turns into a <code>&amp;str</code> for you, so <code>greet(&amp;name)</code> works. <a href="strings.html">Lesson 6</a> explains <code>String</code> and <code>&amp;str</code> in detail.</p>
+  <aside class="callout note">
+    <p class="callout-title">Mental model</p>
+    <p>An owned value is a book you bought. A <code>&amp;</code> reference is lending the book to a friend to read. They can read it, but they cannot write in it, give it away, or throw it out. And you must not burn the book while they are still reading.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="&amp;mut">Changing through a borrow with &amp;mut</h2>
+  <p>A plain <code>&amp;</code> reference is read-only. To let a function change the value, pass a mutable reference with <code>&amp;mut</code>. Both the variable and the reference need <code>mut</code>, so the change is visible at the call site.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+function addItem(cart, item) {
+  cart.push(item);    // changes the caller's array
+}                     // nothing at the call site tells you
+
+const cart = [];
+addItem(cart, "apple");
+console.log(cart);    // ["apple"]
+</script>
+<script type="text/x-code" data-lang="rust">
+fn add_item(cart: &mut Vec<String>, item: &str) {
+    cart.push(item.to_string());
+}
+
+let mut cart = Vec::new();
+add_item(&mut cart, "apple");   // &mut says: this call changes cart
+println!("{:?}", cart);         // ["apple"]
+</script>
+  </div>
+  <p>With a mutable reference to a number, you write <code>*</code> to reach the value behind it. This is called dereferencing.</p>
+<script type="text/x-code" data-lang="rust">
+fn add_bonus(score: &mut i32) {
+    *score += 10;        // change the value the reference points to
+}
+
+let mut score = 5;
+add_bonus(&mut score);
+println!("{score}");     // 15
+</script>
+  <p>For method calls and field access you do not need the <code>*</code>. Rust adds it for you, which is why <code>cart.push(...)</code> works on a <code>&amp;mut Vec</code>.</p>
+</section>
+
+<section>
+  <h2>Many readers or one writer</h2>
+  <p>This is the core rule of borrowing. At any moment, a value can have either:</p>
+  <ul>
+    <li>any number of shared references (<code>&amp;T</code>), or</li>
+    <li>exactly one mutable reference (<code>&amp;mut T</code>).</li>
+  </ul>
+  <p>Never both at once. A borrow lasts from where you create it to the last place you use it, not to the end of the block.</p>
+<script type="text/x-code" data-lang="rust">
+let mut score = 10;
+
+let a = &score;
+let b = &score;          // fine: many readers
+println!("{a} {b}");     // last use of a and b
+
+let c = &mut score;      // fine: a and b are finished
+*c += 1;
+
+let r1 = &mut score;
+let r2 = &mut score;     // error E0499: cannot borrow `score`
+                         // as mutable more than once at a time
+*r1 += 1;
+</script>
+
+  <h3>The bug this rule prevents</h3>
+  <p>Changing a list while you loop over it is a real bug in JavaScript. It runs without an error and gives a wrong answer. In Rust the same code does not compile.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const nums = [1, 2, 2, 3];
+
+nums.forEach((n, i) => {
+  if (n === 2) nums.splice(i, 1);
+});
+
+console.log(nums);   // [1, 2, 3]  one 2 survived!
+// splice shifted the items, so the loop
+// skipped the second 2
+</script>
+<script type="text/x-code" data-lang="rust">
+let mut nums = vec![1, 2, 2, 3];
+
+for (i, n) in nums.iter().enumerate() {
+    if *n == 2 {
+        nums.remove(i);
+        // error E0502: cannot borrow `nums` as mutable
+        // because it is also borrowed as immutable
+    }
+}
+
+// the Rust way: one method, no index juggling
+nums.retain(|n| *n != 2);   // [1, 3]
+</script>
+  </div>
+  <p>The loop holds a shared borrow of <code>nums</code> the whole time. <code>remove</code> needs a mutable borrow. The rule says you cannot have both, so the compiler stops you. Data races between threads are blocked by the same rule, which is why Rust can promise thread safety at compile time.</p>
+</section>
+
+<section>
+  <h2 data-short="Drop and dangling refs">Drop, and why references never dangle</h2>
+  <p>When an owner goes out of scope, Rust calls <code>drop</code> on its value, and the memory is freed right there. You can see the exact line where it happens: the closing brace.</p>
+<script type="text/x-code" data-lang="rust">
+fn main() {
+    let outer = String::from("outer");
+    {
+        let inner = String::from("inner");
+        println!("{inner} {outer}");
+    }   // inner is dropped here
+    println!("{outer}");
+}   // outer is dropped here
+</script>
+  <p>Because Rust knows where every value dies, it can also check that no reference outlives the value it points to. A reference to freed memory is called a dangling reference. In C it is a common crash. In Rust it is a compile error.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="rust" data-title="Does not compile">
+fn make_name() -> &String {
+    // error E0106: missing lifetime specifier
+    let name = String::from("Ana");
+    &name
+}   // name is dropped here, so the
+    // reference would point at nothing
+</script>
+<script type="text/x-code" data-lang="rust" data-title="Fix: return the owned value">
+fn make_name() -> String {
+    let name = String::from("Ana");
+    name        // ownership moves to the caller
+}
+
+let n = make_name();
+println!("{n}");
+</script>
+  </div>
+<script type="text/x-code" data-lang="rust" data-title="Another dangling case">
+let r;
+{
+    let x = 5;
+    r = &x;        // error E0597: `x` does not live long enough
+}                  // x is dropped here
+println!("{r}");   // r would point to freed memory
+</script>
+  <p>JavaScript avoids this problem in a different way. The garbage collector keeps an object alive as long as anything points to it. Rust cannot do that without a collector, so it rejects the code instead.</p>
+</section>
+
+<section>
+  <h2>Lifetimes, a first look</h2>
+  <p>A lifetime is the stretch of code where a reference is valid. The compiler tracks lifetimes for every reference. Most of the time it works them out on its own and you never write them. You only write one when the compiler cannot tell how the references in a function relate.</p>
+  <p>The classic example is a function that returns one of two borrowed strings.</p>
+<script type="text/x-code" data-lang="rust">
+// Without 'a this fails with E0106: the compiler cannot tell
+// whether the result borrows from a or from b.
+fn longest<'a>(a: &'a str, b: &'a str) -> &'a str {
+    if a.len() >= b.len() { a } else { b }
+}
+
+let first = String::from("apple");
+let second = String::from("fig");
+let winner = longest(&first, &second);
+println!("{winner}");    // apple
+</script>
+  <p>Read <code>'a</code> as a name for "some stretch of code". The signature says: both inputs live at least for <code>'a</code>, and the result is valid for <code>'a</code> too. So the result can be used only while both inputs are still alive.</p>
+  <ul>
+    <li>Lifetime names start with an apostrophe: <code>'a</code>, <code>'b</code>, <code>'de</code>.</li>
+    <li>They go in angle brackets after the function name, like generics.</li>
+    <li>They never change how long anything lives. They only describe it so the compiler can check.</li>
+    <li><code>'static</code> means "valid for the whole program". String literals like <code>"hi"</code> have the type <code>&amp;'static str</code>.</li>
+  </ul>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p>If you start adding lifetimes to structs to store references in them, stop and store owned values (<code>String</code>, <code>Vec</code>) instead. It is simpler, and it is what most real Rust code does.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="Common errors">Reading borrow checker errors</h2>
+  <p>The borrow checker is the part of the compiler that checks these rules. You will meet the same handful of errors again and again. Here they are with the usual fix.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Code</th><th>Message</th><th>What happened</th><th>Usual fix</th></tr></thead>
+      <tbody>
+        <tr><td><code>E0382</code></td><td>borrow of moved value / use of moved value</td><td>You used a variable after its value moved somewhere else.</td><td>Pass <code>&amp;x</code> instead of <code>x</code>, or call <code>.clone()</code> before the move.</td></tr>
+        <tr><td><code>E0499</code></td><td>cannot borrow `x` as mutable more than once at a time</td><td>Two <code>&amp;mut</code> borrows overlap.</td><td>Finish using the first one before making the second. Often a smaller block helps.</td></tr>
+        <tr><td><code>E0502</code></td><td>cannot borrow `x` as mutable because it is also borrowed as immutable</td><td>You tried to change a value while someone is still reading it, like editing a Vec inside a loop over it.</td><td>Collect what to change first, then change it. Or use a method like <code>retain</code>.</td></tr>
+        <tr><td><code>E0505</code></td><td>cannot move out of `x` because it is borrowed</td><td>You moved a value while a reference to it is still in use.</td><td>Use the reference before the move, or clone.</td></tr>
+        <tr><td><code>E0106</code></td><td>missing lifetime specifier</td><td>A function or struct returns or stores a reference, and the compiler cannot tell where it comes from.</td><td>Return an owned value (<code>String</code>, <code>Vec</code>). If you really need the reference, add <code>'a</code>.</td></tr>
+        <tr><td><code>E0597</code></td><td>`x` does not live long enough</td><td>A reference outlives the value it points to.</td><td>Move the value to an outer scope so it lives longer, or keep an owned copy.</td></tr>
+      </tbody>
+    </table>
+  </div>
+<script type="text/x-code" data-lang="output" data-title="E0382 in full">
+error[E0382]: borrow of moved value: `name`
+ --> src/main.rs:8:16
+  |
+6 |     let name = String::from("Ana");
+  |         ---- move occurs because `name` has type `String`, which does not implement the `Copy` trait
+7 |     greet(name);
+  |           ---- value moved here
+8 |     println!("{name}");
+  |                ^^^^^^ value borrowed here after move
+  |
+help: consider cloning the value if the performance cost is acceptable
+  |
+7 |     greet(name.clone());
+  |               ++++++++
+</script>
+  <p>Notice how the message tells the whole story: where the value was created, where it moved, and where you tried to use it after. The help line even offers a fix.</p>
+</section>
+
+<section>
+  <h2>Rules of thumb for beginners</h2>
+  <p>You do not need to master ownership before writing real code. These habits avoid most fights with the compiler.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Situation</th><th>Do this</th></tr></thead>
+      <tbody>
+        <tr><td>A function only reads text</td><td>Take <code>&amp;str</code>, not <code>String</code> or <code>&amp;String</code>.</td></tr>
+        <tr><td>A function only reads a list</td><td>Take <code>&amp;[T]</code>, not <code>Vec&lt;T&gt;</code> or <code>&amp;Vec&lt;T&gt;</code>.</td></tr>
+        <tr><td>A function changes something</td><td>Take <code>&amp;mut T</code>.</td></tr>
+        <tr><td>A function creates something new</td><td>Return the owned value: <code>String</code>, <code>Vec&lt;T&gt;</code>, your struct.</td></tr>
+        <tr><td>A struct holds text or lists</td><td>Use owned fields: <code>String</code> and <code>Vec&lt;T&gt;</code>, not references.</td></tr>
+        <tr><td>The borrow checker blocks you and you are stuck</td><td>Clone. Make it work first, make it fast later.</td></tr>
+        <tr><td>Several parts of the program really need to share one value</td><td>Look up <code>Rc&lt;T&gt;</code> (one thread) or <code>Arc&lt;T&gt;</code> (many threads). They count owners, a bit like a small garbage collector for one value.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <aside class="callout note">
+    <p class="callout-title">Mental model</p>
+    <p>Before each function, ask one question: does it need to keep the value, change it, or just look at it? Keep means take it by value. Change means <code>&amp;mut</code>. Look means <code>&amp;</code>. That one question answers most ownership puzzles.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Check yourself</h2>
+  <div class="quiz">
+    <details>
+      <summary>After <code>let b = a;</code> where <code>a</code> is a <code>String</code>, can you still use <code>a</code>?</summary>
+      <div><p>No. The value moved to <code>b</code>, and using <code>a</code> gives error E0382. Use <code>let b = a.clone();</code> if you need both.</p></div>
+    </details>
+    <details>
+      <summary>Why is <code>let y = x;</code> fine when <code>x</code> is an <code>i32</code>?</summary>
+      <div><p><code>i32</code> implements <code>Copy</code>. Assignment makes a cheap copy of the number, so both variables stay valid.</p></div>
+    </details>
+    <details>
+      <summary>What type should a function take if it only prints a name?</summary>
+      <div><p><code>&amp;str</code>. It only reads the text, so it borrows. The caller keeps ownership and can call it again.</p></div>
+    </details>
+    <details>
+      <summary>Can you have a <code>&amp;v</code> and a <code>&amp;mut v</code> in use at the same time?</summary>
+      <div><p>No. A value has many readers or one writer, never both. The compiler reports E0502.</p></div>
+    </details>
+    <details>
+      <summary>When is the memory of a <code>String</code> freed?</summary>
+      <div><p>At the closing brace of the scope where its owner lives. Rust calls <code>drop</code> there. No garbage collector is involved.</p></div>
+    </details>
+    <details>
+      <summary>What does <code>'a</code> in <code>fn longest&lt;'a&gt;(...)</code> do?</summary>
+      <div><p>It names a lifetime, so the signature can say "the result lives as long as both inputs". It does not change how long anything lives. It only lets the compiler check the code.</p></div>
+    </details>
+  </div>
+</section>
+
+</main>
+<script src="assets/app.js"></script>
+</body>
+</html>

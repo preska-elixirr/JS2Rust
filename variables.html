@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Variables and types · Rust from JS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<script>try{var t=localStorage.getItem('rjs-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body data-page="variables.html">
+<main class="lesson">
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 02 · Core syntax</p>
+  <h1>Variables and types</h1>
+  <p class="lead">Rust uses <code>let</code> like JavaScript, but the rules flip. Variables are locked by default, numbers come in many sizes, and you can reuse a name on purpose.</p>
+</header>
+
+<div class="learn">
+  <p>You will learn</p>
+  <ul>
+    <li>Why Rust's <code>let</code> is closer to JavaScript's <code>const</code></li>
+    <li>How <code>mut</code> works, and why it goes deeper than <code>const</code></li>
+    <li>The number types (<code>i32</code>, <code>u8</code>, <code>f64</code> and friends) and when to use each</li>
+    <li>Shadowing, constants, tuples, and converting between types</li>
+  </ul>
+</div>
+
+<section>
+  <h2 data-short="let vs const">let in Rust is const in JS</h2>
+  <p>In JavaScript you pick <code>const</code> when a variable never changes and <code>let</code> when it does. Rust has the same two choices, but the words are different. A plain <code>let</code> can never change. You add <code>mut</code> (short for mutable) to allow changes.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+let count = 1;
+count = 2;            // fine
+
+const name = "Ana";
+name = "Bo";          // TypeError at runtime:
+                      // Assignment to constant variable
+</script>
+<script type="text/x-code" data-lang="rust">
+let mut count = 1;
+count = 2;            // fine, because of `mut`
+
+let name = "Ana";
+name = "Bo";          // compile error E0384:
+                      // cannot assign twice to immutable variable
+</script>
+  </div>
+  <p>Note where the error happens. JavaScript crashes when that line runs. Rust refuses to build the program at all, so the bug never reaches a user.</p>
+
+  <h3>mut goes all the way down</h3>
+  <p>This is where Rust is stricter than <code>const</code>. In JavaScript, <code>const</code> only protects the variable. You can still change what is inside the array or object. In Rust, a value without <code>mut</code> is frozen completely, including its contents.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const list = [1, 2];
+list.push(3);         // allowed! const only blocks `list = ...`
+
+const user = { age: 30 };
+user.age = 31;        // also allowed
+</script>
+<script type="text/x-code" data-lang="rust">
+let list = vec![1, 2];
+list.push(3);         // error: cannot borrow `list` as mutable
+
+let mut list = vec![1, 2];
+list.push(3);         // fine
+</script>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>You want</th><th>JavaScript</th><th>Rust</th></tr></thead>
+      <tbody>
+        <tr><td>A value that never changes</td><td><code>const x = 5</code></td><td><code>let x = 5;</code></td></tr>
+        <tr><td>A value you will change</td><td><code>let x = 5</code></td><td><code>let mut x = 5;</code></td></tr>
+        <tr><td>A list you will push to</td><td><code>const xs = []</code></td><td><code>let mut xs = Vec::new();</code></td></tr>
+        <tr><td>A fixed app-wide value</td><td><code>export const MAX = 100</code></td><td><code>const MAX: u32 = 100;</code></td></tr>
+        <tr><td>Old-style variable</td><td><code>var x = 5</code></td><td>No equivalent. Good.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <aside class="callout note">
+    <p class="callout-title">Mental model</p>
+    <p>Treat every Rust <code>let</code> as a deep <code>Object.freeze</code>. When you need to change something, you say so with <code>mut</code>. Rust code reads easier because the few <code>mut</code> keywords show you exactly where things change.</p>
+  </aside>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p>Rust needs semicolons. Every <code>let</code> line ends with <code>;</code>. There is no automatic semicolon insertion like in JavaScript. In lesson 3 you will see that leaving one off sometimes has a meaning.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Type annotations look like TypeScript</h2>
+  <p>Good news: Rust writes types the same way TypeScript does, with a colon after the name. Like TypeScript, Rust also infers the type when it can, so you leave most annotations out.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+let age: number = 30;
+let price = 9.99;           // inferred: number
+let name = "Ana";           // inferred: string
+let active: boolean = true;
+
+let id;                     // type: any (if noImplicitAny is off)
+id = 42;
+</script>
+<script type="text/x-code" data-lang="rust">
+let age: u32 = 30;
+let price = 9.99;           // inferred: f64
+let name = "Ana";           // inferred: &str
+let active: bool = true;
+
+let id;                     // fine, type decided by first use
+id = 42;                    // now id is i32 forever
+</script>
+  </div>
+  <p>The last two lines show a real difference. TypeScript falls back to <code>any</code> when it cannot tell. Rust has no <code>any</code>. It looks at how you use the variable later and picks one fixed type. If it still cannot work it out, it asks you to write the type.</p>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p>A variable's type never changes. In TypeScript you can widen a type with a union like <code>string | number</code>. Rust has no union shorthand for variables. You use an enum for that, which <a href="enums.html">lesson 9</a> covers.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Numbers come in many sizes</h2>
+  <p>JavaScript has one <code>number</code> type (a 64-bit float) plus <code>bigint</code>. Rust has a separate type for each size and each kind of number. The name tells you everything: the letter is the kind, the digits are the size in bits.</p>
+  <ul>
+    <li><code>i</code> means signed integer. It can be negative.</li>
+    <li><code>u</code> means unsigned integer. It is zero or bigger.</li>
+    <li><code>f</code> means float. It has a decimal point.</li>
+  </ul>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Type</th><th>Range</th><th>Use it for</th></tr></thead>
+      <tbody>
+        <tr><td><code>i32</code></td><td>about -2.1 billion to 2.1 billion</td><td>The default integer. Use it when you have no reason to pick another.</td></tr>
+        <tr><td><code>i64</code></td><td>about ±9.2 quintillion</td><td>Timestamps in milliseconds, database IDs, money in cents.</td></tr>
+        <tr><td><code>u8</code></td><td>0 to 255</td><td>Bytes, colors (RGB channels).</td></tr>
+        <tr><td><code>u32</code> / <code>u64</code></td><td>0 to 4.2 billion / 0 to 18 quintillion</td><td>Counts and IDs that can never be negative.</td></tr>
+        <tr><td><code>usize</code></td><td>depends on the machine (64-bit on most)</td><td>Indexes and lengths. <code>vec.len()</code> returns this.</td></tr>
+        <tr><td><code>i8</code>, <code>i16</code>, <code>i128</code>, <code>u16</code>, <code>u128</code>, <code>isize</code></td><td>smaller or bigger versions</td><td>Rare in everyday code.</td></tr>
+        <tr><td><code>f64</code></td><td>same as a JS <code>number</code></td><td>The default float. Prices, measurements, math.</td></tr>
+        <tr><td><code>f32</code></td><td>less precise float</td><td>Graphics and games, where memory matters.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Rust never mixes number types for you</h3>
+  <p>JavaScript happily adds an integer and a decimal, because both are the same <code>number</code> type. Rust refuses to add an <code>i32</code> to an <code>f64</code>. You convert one side yourself with <code>as</code>.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const a = 5;
+const b = 2.5;
+console.log(a + b);      // 7.5
+
+console.log(7 / 2);      // 3.5
+console.log(Math.floor(7 / 2)); // 3
+</script>
+<script type="text/x-code" data-lang="rust">
+let a: i32 = 5;
+let b: f64 = 2.5;
+// println!("{}", a + b); // error: cannot add `f64` to `i32`
+println!("{}", a as f64 + b); // 7.5
+
+println!("{}", 7 / 2);     // 3   (integers divide to an integer)
+println!("{}", 7.0 / 2.0); // 3.5 (floats divide to a float)
+</script>
+  </div>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p><code>7 / 2</code> is <code>3</code> in Rust, not <code>3.5</code>. Two integers always give an integer, and Rust drops the remainder. Write <code>7.0 / 2.0</code> or convert with <code>as f64</code> when you want decimals.</p>
+  </aside>
+
+  <h3>Overflow is a bug, not a surprise</h3>
+  <p>A <code>u8</code> holds at most 255. If you add 1 to 255, Rust stops the program with a panic in debug builds (the ones you run while developing). Release builds wrap around to 0 instead. When overflow can happen, use the methods that say what you want.</p>
+<script type="text/x-code" data-lang="rust">
+let level: u8 = 255;
+
+let a = level.checked_add(1);     // None, because it would overflow
+let b = level.saturating_add(1);  // 255, stops at the max
+let c = level.wrapping_add(1);    // 0, wraps around on purpose
+</script>
+  <p>You will learn about <code>None</code> in <a href="errors.html">lesson 10</a>. For now, read it as "no value".</p>
+
+  <h3>Writing number literals</h3>
+<script type="text/x-code" data-lang="rust">
+let million = 1_000_000;   // underscores for readability, like 1_000_000 in JS
+let byte = 0xff;           // hex, same as JS
+let flags = 0b1010;        // binary, same as JS
+let small = 42u8;          // a suffix sets the type: this is a u8
+let ratio = 1.5e3;         // 1500.0, scientific notation works too
+</script>
+</section>
+
+<section>
+  <h2>Booleans and characters</h2>
+  <p><code>bool</code> works the same as in JavaScript: <code>true</code> or <code>false</code>. The difference is that Rust has no truthy or falsy values. An <code>if</code> needs a real <code>bool</code>.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const items = [];
+if (items.length) {        // 0 is falsy
+  console.log("has items");
+}
+
+const name = "";
+if (!name) console.log("empty");
+</script>
+<script type="text/x-code" data-lang="rust">
+let items: Vec<i32> = Vec::new();
+if !items.is_empty() {     // must be a bool
+    println!("has items");
+}
+
+let name = "";
+if name.is_empty() { println!("empty"); }
+</script>
+  </div>
+
+  <p>Rust also has a <code>char</code> type for a single character. This is where quotes start to matter.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const a = "x";    // string
+const b = 'x';    // also a string, same thing
+const c = `x`;    // also a string
+</script>
+<script type="text/x-code" data-lang="rust">
+let a = "x";      // string slice (&str)
+let b = 'x';      // char: exactly one character
+let c = '🦀';     // a char can be any Unicode character
+</script>
+  </div>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p>In Rust, single quotes and double quotes are not interchangeable. <code>'hello'</code> is a compile error because a <code>char</code> holds one character. Always use double quotes for text.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Shadowing: reusing a name on purpose</h2>
+  <p>JavaScript does not let you declare the same name twice in one scope. Rust does. A second <code>let</code> with the same name makes a brand new variable that hides the old one. This is called shadowing.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+let input = "42";
+let input = Number(input);
+// SyntaxError: Identifier 'input'
+// has already been declared
+
+// so you invent a new name
+const inputNumber = Number(input);
+</script>
+<script type="text/x-code" data-lang="rust">
+let input = "42";
+let input: i32 = input.parse().unwrap();
+// fine: a new `input` variable,
+// now with type i32
+
+println!("{}", input + 1); // 43
+</script>
+  </div>
+  <p>Shadowing is different from <code>mut</code> in two ways:</p>
+  <ul>
+    <li>The new variable can have a different type. <code>mut</code> can only change the value, never the type.</li>
+    <li>Each variable stays immutable. You get a fresh value without opening the door to changes.</li>
+  </ul>
+  <p>It is very common for "parse and clean up" steps, where you would otherwise end up with names like <code>rawInput</code>, <code>trimmedInput</code> and <code>parsedInput</code>.</p>
+
+  <h3>Shadowing inside a block</h3>
+  <p>A block is any pair of curly braces. A shadow inside a block disappears at the closing brace, and the old variable comes back.</p>
+<script type="text/x-code" data-lang="rust">
+let x = 5;
+{
+    let x = x * 2;
+    println!("inside: {x}");   // inside: 10
+}
+println!("outside: {x}");      // outside: 5
+</script>
+</section>
+
+<section>
+  <h2>Constants and statics</h2>
+  <p>For values known before the program runs, like limits and config, use <code>const</code>. It must have a type, and the name is written in <code>SCREAMING_SNAKE_CASE</code>.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+export const MAX_USERS = 1000;
+export const API_URL = "https://api.example.com";
+export const TIMEOUT_MS = 30 * 1000;
+</script>
+<script type="text/x-code" data-lang="rust">
+pub const MAX_USERS: u32 = 1_000;
+pub const API_URL: &str = "https://api.example.com";
+pub const TIMEOUT_MS: u64 = 30 * 1000;
+</script>
+  </div>
+  <ul>
+    <li><code>const</code> can live outside any function, at the top of a file. <code>let</code> cannot.</li>
+    <li>The value must be computable at compile time. You cannot use the result of a normal function call or read a file.</li>
+    <li><code>pub</code> works like <code>export</code>. <a href="modules.html">Lesson 12</a> explains it.</li>
+    <li>There is also <code>static</code>, a global with one fixed memory address. You will rarely need it as a beginner. Use <code>const</code>.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Tuples: small fixed groups</h2>
+  <p>In TypeScript you might type an array as <code>[number, number]</code> to hold a pair. Rust has a real tuple type for this, written with parentheses.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const point: [number, number] = [3, 4];
+const [x, y] = point;
+console.log(point[0]);      // 3
+
+function minMax(xs: number[]): [number, number] {
+  return [Math.min(...xs), Math.max(...xs)];
+}
+const [lo, hi] = minMax([4, 1, 9]);
+</script>
+<script type="text/x-code" data-lang="rust">
+let point: (i32, i32) = (3, 4);
+let (x, y) = point;
+println!("{}", point.0);    // 3, access with .0 .1 .2
+
+fn min_max(xs: &[i32]) -> (i32, i32) {
+    (*xs.iter().min().unwrap(), *xs.iter().max().unwrap())
+}
+let (lo, hi) = min_max(&[4, 1, 9]);
+</script>
+  </div>
+  <p>The empty tuple <code>()</code> has a name: the unit type. It means "nothing useful", much like <code>void</code> in TypeScript. A function that returns nothing returns <code>()</code>.</p>
+</section>
+
+<section>
+  <h2>Converting between types</h2>
+  <p>JavaScript converts types for you, sometimes when you do not want it to (<code>"5" * 2</code> is <code>10</code>). Rust never does. You convert on purpose, and a conversion that can fail gives you a value you must check.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Task</th><th>JavaScript</th><th>Rust</th></tr></thead>
+      <tbody>
+        <tr><td>Text to number</td><td><code>Number("42")</code>, <code>parseInt("42")</code></td><td><code>"42".parse::&lt;i32&gt;()</code> returns a <code>Result</code></td></tr>
+        <tr><td>Number to text</td><td><code>String(42)</code>, <code>(42).toString()</code></td><td><code>42.to_string()</code></td></tr>
+        <tr><td>Integer to float</td><td>not needed</td><td><code>x as f64</code></td></tr>
+        <tr><td>Float to integer</td><td><code>Math.trunc(3.9)</code></td><td><code>3.9_f64 as i32</code> gives <code>3</code></td></tr>
+        <tr><td>Small int to big int</td><td>not needed</td><td><code>i64::from(x)</code> or <code>x as i64</code></td></tr>
+        <tr><td>Big int to small int, safely</td><td>not needed</td><td><code>u8::try_from(x)</code> fails if it does not fit</td></tr>
+        <tr><td>Anything to boolean</td><td><code>Boolean(x)</code>, <code>!!x</code></td><td>Write the test: <code>x != 0</code>, <code>!s.is_empty()</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+<script type="text/x-code" data-lang="rust">
+let text = "42";
+
+// parse() can fail ("abc" is not a number), so it returns a Result.
+// For now, .unwrap() means "give me the number, crash if it failed".
+let n: i32 = text.parse().unwrap();
+
+// You can also put the type on parse itself with the "turbofish" ::<>
+let m = text.parse::<i32>().unwrap();
+
+let back_to_text: String = n.to_string();
+</script>
+  <aside class="callout note">
+    <p class="callout-title">Mental model</p>
+    <p><code>as</code> is a blunt tool. It never fails, so it can lose data: <code>300 as u8</code> gives <code>44</code>. Use <code>as</code> for widening (small to big) and for int-float conversions. Use <code>try_from</code> when the value might not fit.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Naming and warnings</h2>
+  <p>Rust has firm naming rules, and the compiler warns you when you break them.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Thing</th><th>JavaScript style</th><th>Rust style</th></tr></thead>
+      <tbody>
+        <tr><td>Variables and functions</td><td><code>userName</code>, <code>getUser()</code></td><td><code>user_name</code>, <code>get_user()</code></td></tr>
+        <tr><td>Types, structs, enums, traits</td><td><code>UserProfile</code></td><td><code>UserProfile</code> (same)</td></tr>
+        <tr><td>Constants</td><td><code>MAX_SIZE</code> or <code>maxSize</code></td><td><code>MAX_SIZE</code> only</td></tr>
+        <tr><td>Files and modules</td><td><code>userService.ts</code></td><td><code>user_service.rs</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Rust also warns about variables you never use. If you keep one on purpose, start its name with an underscore.</p>
+<script type="text/x-code" data-lang="rust">
+let result = compute();     // warning: unused variable: `result`
+let _result = compute();    // no warning, the underscore says "I know"
+let _ = compute();          // run it and throw the value away
+</script>
+</section>
+
+<section>
+  <h2>Check yourself</h2>
+  <div class="quiz">
+    <details>
+      <summary>Which Rust line matches JavaScript's <code>let total = 0</code>?</summary>
+      <div><p><code>let mut total = 0;</code>. JavaScript's <code>let</code> allows reassignment, so you need <code>mut</code> in Rust. Plain <code>let total = 0;</code> matches <code>const</code>.</p></div>
+    </details>
+    <details>
+      <summary>What does <code>let x = 10 / 4;</code> give in Rust?</summary>
+      <div><p><code>2</code>. Both sides are integers, so the result is an integer and the remainder is dropped. Write <code>10.0 / 4.0</code> to get <code>2.5</code>.</p></div>
+    </details>
+    <details>
+      <summary>Why does <code>let v = vec![1]; v.push(2);</code> fail?</summary>
+      <div><p><code>v</code> is not declared with <code>mut</code>, and in Rust that freezes the contents too. Write <code>let mut v = vec![1];</code>.</p></div>
+    </details>
+    <details>
+      <summary>What type should an index into a list have?</summary>
+      <div><p><code>usize</code>. Lengths and indexes are always <code>usize</code>, so using it avoids conversions.</p></div>
+    </details>
+    <details>
+      <summary>Is <code>let name = 'Ana';</code> valid Rust?</summary>
+      <div><p>No. Single quotes make a <code>char</code>, which holds exactly one character. Use <code>"Ana"</code>.</p></div>
+    </details>
+  </div>
+</section>
+
+</main>
+<script src="assets/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,733 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arrays, vectors, iterators · Rust from JS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<script>try{var t=localStorage.getItem('rjs-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body data-page="arrays.html">
+<main class="lesson">
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 07 · Data</p>
+  <h1>Arrays, vectors, iterators</h1>
+  <p class="lead">The JavaScript array does everything. Rust splits that job between fixed arrays, growable vectors and borrowed slices. Your <code>map</code> and <code>filter</code> skills carry over almost one to one.</p>
+</header>
+
+<div class="learn">
+  <p>You will learn</p>
+  <ul>
+    <li>When to use a fixed array <code>[T; N]</code> and when to use a <code>Vec&lt;T&gt;</code></li>
+    <li>Why <code>v[10]</code> crashes and how <code>.get()</code> avoids it</li>
+    <li>Slices, and the three ways to loop over a vector</li>
+    <li><code>map</code>, <code>filter</code>, <code>reduce</code>, <code>find</code> and sorting, the Rust way</li>
+    <li>Why iterators do nothing until you call <code>collect</code></li>
+  </ul>
+</div>
+
+<section>
+  <h2 data-short="Array vs Vec">Fixed arrays and vectors</h2>
+  <p>JavaScript has one array type that can hold anything and grow forever. Rust has two list types. Both hold items of one single type.</p>
+  <ul>
+    <li><strong>Array</strong>, written <code>[T; N]</code>. Its length <code>N</code> is part of the type and never changes. It lives on the stack.</li>
+    <li><strong>Vector</strong>, written <code>Vec&lt;T&gt;</code>. It can grow and shrink. Its items live on the heap. This is what you will use 95% of the time.</li>
+  </ul>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const rgb: number[] = [255, 128, 0];
+const zeros = new Array(5).fill(0);
+
+const names: string[] = [];
+names.push("Ana");
+names.push("Bo");
+
+const mixed = [1, "two", true];  // allowed in JS
+</script>
+<script type="text/x-code" data-lang="rust">
+let rgb: [u8; 3] = [255, 128, 0];   // fixed: always 3 items
+let zeros = [0; 5];                 // [0, 0, 0, 0, 0]
+
+let mut names: Vec<String> = Vec::new();
+names.push(String::from("Ana"));
+names.push(String::from("Bo"));
+
+let nums = vec![1, 2, 3];           // vec! macro, like an array literal
+// let mixed = vec![1, "two", true];  // error: mismatched types
+</script>
+  </div>
+  <p>An array cannot grow. <code>rgb.push(1)</code> fails with "no method named `push` found for array `[u8; 3]`". Use arrays for data with a natural fixed size: RGB colors, coordinates, the days of the week. Use <code>Vec</code> for everything else.</p>
+  <aside class="callout note">
+    <p class="callout-title">Mental model</p>
+    <p><code>Vec&lt;T&gt;</code> is your JavaScript array, minus the mixed types. When you need different kinds of items in one list, make an enum and store that. <a href="enums.html">Lesson 9</a> shows how.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Adding and removing items</h2>
+  <p>The method names are close to JavaScript. Remember the <code>mut</code>: without it, a <code>Vec</code> is frozen.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const list = [1, 2, 3];
+list.push(4);           // [1, 2, 3, 4]
+list.pop();             // 4
+list.unshift(0);        // [0, 1, 2, 3]
+list.splice(1, 0, 9);   // [0, 9, 1, 2, 3]
+list.splice(2, 1);      // [0, 9, 2, 3]
+list.shift();           // 0, list is [9, 2, 3]
+list.length;            // 3
+list.length === 0;      // false
+list.length = 0;        // []
+
+[].pop();               // undefined
+</script>
+<script type="text/x-code" data-lang="rust">
+let mut list = vec![1, 2, 3];
+list.push(4);           // [1, 2, 3, 4]
+list.pop();             // Some(4)
+list.insert(0, 0);      // [0, 1, 2, 3]
+list.insert(1, 9);      // [0, 9, 1, 2, 3]
+list.remove(2);         // returns 1, list is [0, 9, 2, 3]
+list.remove(0);         // returns 0, list is [9, 2, 3]
+list.len();             // 3
+list.is_empty();        // false
+list.clear();           // []
+
+list.pop();             // None
+</script>
+  </div>
+  <p><code>pop</code> returns <code>Some(value)</code> or <code>None</code>, because the vector might be empty. JavaScript returns <code>undefined</code> and hopes you notice. <a href="errors.html">Lesson 10</a> covers how to unpack an <code>Option</code>.</p>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p><code>insert(0, x)</code> and <code>remove(0)</code> shift every other item, so they are slow on big lists. The same is true of <code>unshift</code> and <code>shift</code> in JavaScript. If you add and remove at the front a lot, use a <code>VecDeque</code>, shown near the end of this page.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="Indexing">Reading by index: panic or Option</h2>
+  <p>Square brackets work like in JavaScript, with one big difference. Reading past the end in JavaScript quietly gives <code>undefined</code>. In Rust it stops the program with a panic.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const list = [10, 20, 30];
+
+list[1];        // 20
+list[10];       // undefined, no error
+list.at(-1);    // 30
+list[0];        // 10
+</script>
+<script type="text/x-code" data-lang="rust">
+let list = vec![10, 20, 30];
+
+let a = list[1];       // 20
+let b = list[10];      // panic: index out of bounds:
+                       // the len is 3 but the index is 10
+let c = list.get(10);  // None, no panic
+let d = list.get(1);   // Some(&20)
+let e = list.last();   // Some(&30)
+let f = list.first();  // Some(&10)
+</script>
+  </div>
+  <ul>
+    <li>Use <code>v[i]</code> when you know the index is valid, for example inside a loop over <code>0..v.len()</code>.</li>
+    <li>Use <code>v.get(i)</code> when the index comes from outside (user input, another list). Handle the <code>None</code>.</li>
+    <li>Indexes are always <code>usize</code>. An <code>i32</code> index does not compile. Convert with <code>i as usize</code>.</li>
+    <li>There are no negative indexes. Use <code>last()</code>, or <code>v[v.len() - 1]</code> if you know the list is not empty.</li>
+  </ul>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p><code>v.len() - 1</code> on an empty vector does not give <code>-1</code>. <code>len()</code> returns an unsigned <code>usize</code>, so subtracting 1 from 0 overflows and panics in debug builds. Check <code>is_empty()</code> first, or use <code>last()</code>.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="Slices">Slices: a view into part of a list</h2>
+  <p>A slice, written <code>&amp;[T]</code>, borrows a range of items from an array or vector. Unlike JavaScript's <code>slice()</code>, it copies nothing. It is a pointer and a length, just like <code>&amp;str</code> for strings.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const nums = [10, 20, 30, 40, 50];
+
+nums.slice(1, 4);   // [20, 30, 40]  (a new array)
+nums.slice(0, 2);   // [10, 20]
+nums.slice(3);      // [40, 50]
+nums.slice();       // full copy
+</script>
+<script type="text/x-code" data-lang="rust">
+let nums = vec![10, 20, 30, 40, 50];
+
+let middle = &nums[1..4];   // [20, 30, 40]  (borrowed, no copy)
+let start = &nums[..2];     // [10, 20]
+let end = &nums[3..];       // [40, 50]
+let copy = nums.to_vec();   // a real copy, when you need one
+</script>
+  </div>
+  <p>Ranges use <code>start..end</code>, where <code>end</code> is not included, the same as JavaScript's <code>slice</code>. Write <code>..=end</code> to include the end.</p>
+  <h3>Take &amp;[T] in function parameters</h3>
+  <p>If a function only reads a list, make its parameter a slice. Then it accepts a <code>&amp;Vec</code>, an array, or part of either.</p>
+<script type="text/x-code" data-lang="rust">
+fn average(xs: &[f64]) -> f64 {
+    xs.iter().sum::<f64>() / xs.len() as f64
+}
+
+let prices = vec![1.0, 2.0, 6.0];
+average(&prices);            // a &Vec<f64> turns into &[f64]
+average(&[3.0, 4.0, 5.0]);   // an array works
+average(&prices[0..2]);      // and so does a slice of a slice
+</script>
+</section>
+
+<section>
+  <h2 data-short="Looping">Three ways to loop over a vector</h2>
+  <p>In JavaScript, <code>for...of</code> always gives you the items and the array stays usable. In Rust you choose: borrow the items, borrow them to change them, or take the whole vector. This is <a href="ownership.html">ownership</a> showing up in loops.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Loop</th><th>Method form</th><th>Each item is</th><th>After the loop</th><th>Use it to</th></tr></thead>
+      <tbody>
+        <tr><td><code>for x in &amp;v</code></td><td><code>v.iter()</code></td><td><code>&amp;T</code></td><td><code>v</code> is still yours</td><td>Read items. The common case.</td></tr>
+        <tr><td><code>for x in &amp;mut v</code></td><td><code>v.iter_mut()</code></td><td><code>&amp;mut T</code></td><td><code>v</code> is still yours, changed</td><td>Change items in place.</td></tr>
+        <tr><td><code>for x in v</code></td><td><code>v.into_iter()</code></td><td><code>T</code></td><td><code>v</code> is gone (moved)</td><td>Take items out, for example to move them into another list.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const prices = [10, 20, 30];
+
+for (const p of prices) {
+  console.log(p);
+}
+
+for (let i = 0; i < prices.length; i++) {
+  prices[i] *= 2;
+}
+
+prices.forEach((p, i) => console.log(i, p));
+</script>
+<script type="text/x-code" data-lang="rust">
+let mut prices = vec![10, 20, 30];
+
+for p in &prices {
+    println!("{p}");
+}
+
+for p in &mut prices {
+    *p *= 2;            // * reaches the value behind the reference
+}
+
+for (i, p) in prices.iter().enumerate() {
+    println!("{i} {p}");
+}
+
+for p in prices {       // takes ownership of prices
+    println!("{p}");
+}
+// prices cannot be used here anymore
+</script>
+  </div>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p>Start with <code>for x in &amp;v</code>. Reach for <code>&amp;mut v</code> when you change items, and plain <code>v</code> only when you are done with the vector.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="map, filter, reduce">map, filter and reduce</h2>
+  <p>In JavaScript, <code>map</code> and <code>filter</code> are methods on the array, and each one builds a new array right away. In Rust you first turn the vector into an iterator with <code>.iter()</code>, chain your steps, and finish with a step that produces a result, like <code>.collect()</code> or <code>.sum()</code>.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const nums = [1, 2, 3, 4, 5];
+
+const doubled = nums.map((n) => n * 2);
+// [2, 4, 6, 8, 10]
+
+const evens = nums.filter((n) => n % 2 === 0);
+// [2, 4]
+
+const sum = nums.reduce((acc, n) => acc + n, 0);
+// 15
+
+const total = nums
+  .filter((n) => n > 2)
+  .map((n) => n * 10)
+  .reduce((acc, n) => acc + n, 0);
+// 120
+</script>
+<script type="text/x-code" data-lang="rust">
+let nums = vec![1, 2, 3, 4, 5];
+
+let doubled: Vec<i32> = nums.iter().map(|n| n * 2).collect();
+// [2, 4, 6, 8, 10]
+
+let evens: Vec<i32> = nums.iter().copied().filter(|n| n % 2 == 0).collect();
+// [2, 4]
+
+let sum = nums.iter().fold(0, |acc, n| acc + n);
+let sum: i32 = nums.iter().sum();       // shorter
+// 15
+
+let total: i32 = nums
+    .iter()
+    .filter(|n| **n > 2)
+    .map(|n| n * 10)
+    .sum();
+// 120
+</script>
+  </div>
+  <p>Some notes on the new parts:</p>
+  <ul>
+    <li><code>|n| n * 2</code> is a closure, Rust's arrow function. <a href="functions.html">Lesson 3</a> covers it.</li>
+    <li><code>collect()</code> needs to know what to build. Give the variable a type like <code>Vec&lt;i32&gt;</code>, or write <code>.collect::&lt;Vec&lt;_&gt;&gt;()</code>. The <code>_</code> lets Rust fill in the item type.</li>
+    <li><code>fold</code> is <code>reduce</code> with a start value. Rust also has <code>reduce</code>, which uses the first item as the start and returns an <code>Option</code> for empty lists.</li>
+    <li><code>sum()</code>, <code>product()</code>, <code>count()</code>, <code>min()</code> and <code>max()</code> are built in.</li>
+  </ul>
+  <h3>The stars: * and **</h3>
+  <p><code>.iter()</code> hands out references (<code>&amp;i32</code>), not values. <code>filter</code> then passes a reference to each item, so you get a reference to a reference (<code>&amp;&amp;i32</code>). Each <code>*</code> peels one layer off. Math operators like <code>n * 10</code> work on a reference directly, but comparisons like <code>n &gt; 2</code> need both sides to be the same type.</p>
+  <p>Two ways to avoid the stars:</p>
+<script type="text/x-code" data-lang="rust">
+let nums = vec![1, 2, 3, 4, 5];
+
+// 1. .copied() turns &i32 into i32 for number types
+let big: Vec<i32> = nums.iter().copied().filter(|n| *n > 2).collect();
+
+// 2. A pattern in the closure parameter unpacks the references
+let big: Vec<i32> = nums.iter().filter(|&&n| n > 2).copied().collect();
+</script>
+  <p>Do not worry about memorizing this. If you get the stars wrong, the compiler says so and usually suggests the right number.</p>
+</section>
+
+<section>
+  <h2>Searching a list</h2>
+  <p>Searches return an <code>Option</code> instead of <code>undefined</code> or <code>-1</code>. You cannot forget the "not found" case, because the type makes you handle it.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const nums = [5, 12, 8, 130, 44];
+
+nums.find((n) => n > 10);       // 12
+nums.find((n) => n > 1000);     // undefined
+nums.findIndex((n) => n > 10);  // 1
+nums.indexOf(8);                // 2
+nums.indexOf(99);               // -1
+nums.includes(8);               // true
+nums.some((n) => n > 100);      // true
+nums.every((n) => n > 0);       // true
+Math.max(...nums);              // 130
+</script>
+<script type="text/x-code" data-lang="rust">
+let nums = vec![5, 12, 8, 130, 44];
+
+nums.iter().find(|n| **n > 10);       // Some(&12)
+nums.iter().find(|n| **n > 1000);     // None
+nums.iter().position(|n| *n > 10);    // Some(1)
+nums.iter().position(|n| *n == 8);    // Some(2)
+nums.iter().position(|n| *n == 99);   // None
+nums.contains(&8);                    // true
+nums.iter().any(|n| *n > 100);        // true
+nums.iter().all(|n| *n > 0);          // true
+nums.iter().max();                    // Some(&130)
+</script>
+  </div>
+  <p>Why one star for <code>position</code> and two for <code>find</code>? <code>find</code> borrows each item to look at it, which adds a layer. <code>position</code>, <code>any</code> and <code>all</code> pass the item itself. With struct fields you rarely notice, because <code>u.age</code> unwraps references for you.</p>
+</section>
+
+<section>
+  <h2>Sorting</h2>
+  <p>Rust sorts in place, like JavaScript, so the vector must be <code>mut</code>. Unlike JavaScript, numbers sort as numbers.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const nums = [10, 9, 1, 100];
+nums.sort();                    // [1, 10, 100, 9] (!)
+nums.sort((a, b) => a - b);     // [1, 9, 10, 100]
+nums.sort((a, b) => b - a);     // [100, 10, 9, 1]
+
+const words = ["pear", "fig", "apple"];
+words.sort((a, b) => a.length - b.length);
+// ["fig", "pear", "apple"]
+
+const sorted = nums.toSorted(); // copy, original unchanged
+</script>
+<script type="text/x-code" data-lang="rust">
+let mut nums = vec![10, 9, 1, 100];
+nums.sort();                        // [1, 9, 10, 100]
+nums.sort_by(|a, b| b.cmp(a));      // [100, 10, 9, 1]
+
+let mut words = vec!["pear", "fig", "apple"];
+words.sort_by_key(|w| w.len());
+// ["fig", "pear", "apple"]
+
+let mut sorted = nums.clone();      // copy first, then sort the copy
+sorted.sort();
+</script>
+  </div>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p>JavaScript's <code>sort()</code> with no argument converts numbers to strings, so <code>100</code> sorts before <code>9</code>. Rust's <code>sort()</code> uses the real ordering of the type. You only need a comparator to sort a different way.</p>
+  </aside>
+  <p>A comparator in Rust returns an <code>Ordering</code> (<code>Less</code>, <code>Equal</code> or <code>Greater</code>) instead of a negative or positive number. <code>a.cmp(b)</code> builds one for you. <code>sort_by_key</code> is the shortcut when you sort by one field.</p>
+
+  <h3>Floats need a special comparator</h3>
+  <p>Floats have a strange value, <code>NaN</code> (not a number), which is not smaller, equal or bigger than anything. So Rust does not let you call <code>sort()</code> on a list of <code>f64</code>.</p>
+<script type="text/x-code" data-lang="rust">
+let mut prices = vec![2.5, 0.99, 10.0];
+
+// prices.sort();   // error E0277: the trait bound `f64: Ord` is not satisfied
+
+prices.sort_by(|a, b| a.total_cmp(b));             // [0.99, 2.5, 10.0]
+prices.sort_by(|a, b| a.partial_cmp(b).unwrap());  // older style, panics on NaN
+</script>
+  <p><code>total_cmp</code> gives every float a fixed place, NaN included, so it never panics. Prefer it.</p>
+</section>
+
+<section>
+  <h2>Reshaping a list</h2>
+  <p>Many array helpers exist under the same or a similar name.</p>
+<script type="text/x-code" data-lang="rust">
+let mut v = vec![3, 1, 3, 2, 1];
+
+v.sort();                // [1, 1, 2, 3, 3]
+v.dedup();               // [1, 2, 3]  removes repeats that sit next to each other
+v.reverse();             // [3, 2, 1]
+v.retain(|n| *n != 2);   // [3, 1]  like filter, but changes v in place
+v.extend([7, 8]);        // [3, 1, 7, 8]
+v.truncate(2);           // [3, 1]  keep the first 2
+v.fill(0);               // [0, 0]
+</script>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p><code>dedup</code> only removes neighbours. Sort first to remove all duplicates, or collect into a <code>HashSet</code>, shown below.</p>
+  </aside>
+
+  <h3>Joining into text</h3>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+["a", "b", "c"].join(", ");   // "a, b, c"
+[1, 2, 3].join("-");          // "1-2-3"
+</script>
+<script type="text/x-code" data-lang="rust">
+["a", "b", "c"].join(", ");   // "a, b, c"
+
+let nums = vec![1, 2, 3];
+let text = nums
+    .iter()
+    .map(|n| n.to_string())
+    .collect::<Vec<_>>()
+    .join("-");               // "1-2-3"
+</script>
+  </div>
+  <p><code>join</code> only works on lists of text, so numbers need a <code>to_string()</code> step first.</p>
+
+  <h3>Spread and concat</h3>
+  <p>Rust has no spread operator. Pick the tool that matches what you want.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const a = [1, 2];
+const b = [3, 4];
+
+const all = [...a, ...b];      // [1, 2, 3, 4]
+const both = a.concat(b);      // [1, 2, 3, 4]
+const copy = [...a];
+const padded = [0, ...a, 9];   // [0, 1, 2, 9]
+
+a.push(...b);                  // a is now [1, 2, 3, 4]
+</script>
+<script type="text/x-code" data-lang="rust">
+let mut a = vec![1, 2];
+let b = vec![3, 4];
+
+let all = [a.clone(), b.clone()].concat();               // [1, 2, 3, 4]
+let both: Vec<i32> = a.iter().chain(&b).copied().collect(); // [1, 2, 3, 4]
+let copy = a.clone();
+let mut padded = vec![0];
+padded.extend(&a);
+padded.push(9);                                          // [0, 1, 2, 9]
+
+a.extend(&b);                  // a is now [1, 2, 3, 4]
+</script>
+  </div>
+</section>
+
+<section>
+  <h2 data-short="Destructuring">Destructuring with slice patterns</h2>
+  <p>Array destructuring has a Rust version too. Because a vector's length is unknown at compile time, you use <code>if let</code> or <code>match</code>, which handle the case where the shape does not fit.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const nums = [1, 2, 3, 4];
+
+const [first, second, ...rest] = nums;
+// 1, 2, [3, 4]
+
+const [r, g, b] = [255, 128, 0];
+
+if (nums.length === 0) console.log("empty");
+else if (nums.length === 1) console.log(`one: ${nums[0]}`);
+else console.log(`${nums[0]} to ${nums.at(-1)}`);
+</script>
+<script type="text/x-code" data-lang="rust">
+let nums = vec![1, 2, 3, 4];
+
+if let [first, second, rest @ ..] = nums.as_slice() {
+    println!("{first} {second} {:?}", rest);  // 1 2 [3, 4]
+}
+
+let [r, g, b] = [255, 128, 0];   // fixed arrays: plain let works
+
+match nums.as_slice() {
+    [] => println!("empty"),
+    [only] => println!("one: {only}"),
+    [first, .., last] => println!("{first} to {last}"),
+}
+</script>
+  </div>
+  <p><code>..</code> means "any number of items here", and <code>rest @ ..</code> gives those items a name. The compiler checks that your <code>match</code> covers every possible length. More on patterns in <a href="enums.html">lesson 9</a>.</p>
+</section>
+
+<section>
+  <h2 data-short="Lazy iterators">Iterators are lazy</h2>
+  <p>A chain like <code>.iter().map(...)</code> does not run anything by itself. It builds a recipe. The work happens only when a final step asks for results: <code>collect</code>, <code>sum</code>, <code>count</code>, <code>find</code>, <code>for_each</code>, or a <code>for</code> loop.</p>
+<script type="text/x-code" data-lang="rust">
+let nums = vec![1, 2, 3];
+
+nums.iter().map(|n| println!("{n}"));       // prints nothing!
+// warning: unused `Map` that must be used
+// note: iterators are lazy and do nothing unless consumed
+
+nums.iter().for_each(|n| println!("{n}"));  // prints 1, 2, 3
+</script>
+  <p>Laziness has a real upside. Each item goes through the whole chain before the next item starts, and the chain stops as soon as it has an answer. No temporary lists get built in between.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+// map runs on ALL 1,000,000 items and builds
+// a new array, then find looks for the first match
+const hit = bigList
+  .map((n) => expensive(n))
+  .find((x) => x > 100);
+</script>
+<script type="text/x-code" data-lang="rust">
+// expensive runs only until the first match,
+// and no temporary Vec is created
+let hit = big_list
+    .iter()
+    .map(|n| expensive(*n))
+    .find(|x| *x > 100);
+</script>
+  </div>
+  <aside class="callout note">
+    <p class="callout-title">Mental model</p>
+    <p>A Rust iterator chain is like a JavaScript generator pipeline, not like array methods. Nothing flows until something at the end pulls. That is also why the compiler can turn these chains into code as fast as a hand-written loop.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>A realistic example</h2>
+  <p>Here is the kind of code you write every day: a list of records, filtered, mapped and summarized.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts" data-title="users.ts">
+type User = { name: string; age: number; active: boolean };
+
+const users: User[] = [
+  { name: "Ana", age: 31, active: true },
+  { name: "Bo", age: 17, active: true },
+  { name: "Cy", age: 45, active: false },
+  { name: "Di", age: 29, active: true },
+];
+
+// names of active adults, sorted
+const names = users
+  .filter((u) => u.active && u.age >= 18)
+  .map((u) => u.name)
+  .sort();
+console.log(names);              // ["Ana", "Di"]
+
+const totalAge = users.reduce((sum, u) => sum + u.age, 0);
+const average = totalAge / users.length;
+console.log(average.toFixed(1)); // "30.5"
+
+// reduce throws on an empty array!
+const oldest = users.reduce((a, b) => (b.age > a.age ? b : a));
+console.log(`Oldest: ${oldest.name}`);  // Cy
+</script>
+<script type="text/x-code" data-lang="rust" data-title="main.rs">
+#[derive(Debug)]
+struct User {
+    name: String,
+    age: u32,
+    active: bool,
+}
+
+fn main() {
+    let users = vec![
+        User { name: "Ana".to_string(), age: 31, active: true },
+        User { name: "Bo".to_string(), age: 17, active: true },
+        User { name: "Cy".to_string(), age: 45, active: false },
+        User { name: "Di".to_string(), age: 29, active: true },
+    ];
+
+    // names of active adults, sorted
+    let mut names: Vec<&str> = users
+        .iter()
+        .filter(|u| u.active && u.age >= 18)
+        .map(|u| u.name.as_str())
+        .collect();
+    names.sort();
+    println!("{:?}", names);              // ["Ana", "Di"]
+
+    let total_age: u32 = users.iter().map(|u| u.age).sum();
+    let average = total_age as f64 / users.len() as f64;
+    println!("{average:.1}");             // 30.5
+
+    // max_by_key returns an Option, so an empty list is safe
+    if let Some(oldest) = users.iter().max_by_key(|u| u.age) {
+        println!("Oldest: {}", oldest.name);  // Cy
+    }
+}
+</script>
+  </div>
+  <p>Note that <code>names</code> holds <code>&amp;str</code> values borrowed from <code>users</code>. No text was copied. The compiler makes sure <code>users</code> lives at least as long as <code>names</code>. Structs get their own lesson: <a href="objects.html">lesson 8</a>.</p>
+</section>
+
+<section>
+  <h2 data-short="Grids, sets, queues">Grids, sets and queues</h2>
+  <h3>2D lists</h3>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const grid = Array.from({ length: 2 }, () => Array(3).fill(0));
+grid[1][2] = 5;
+// [[0, 0, 0], [0, 0, 5]]
+
+// trap: this shares ONE inner array between rows
+const bad = Array(2).fill([]);
+</script>
+<script type="text/x-code" data-lang="rust">
+let mut grid = vec![vec![0; 3]; 2];   // 2 rows of 3 columns
+grid[1][2] = 5;
+
+for row in &grid {
+    println!("{:?}", row);
+}
+// [0, 0, 0]
+// [0, 0, 5]
+</script>
+  </div>
+  <p><code>vec![x; n]</code> clones <code>x</code> for each slot, so every row is its own <code>Vec</code>. The shared-row bug from JavaScript cannot happen.</p>
+
+  <h3>HashSet is Set</h3>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const seen = new Set();
+seen.add("a");
+seen.add("a");
+seen.has("a");       // true
+seen.size;           // 1
+
+const nums = [3, 1, 3, 2];
+const unique = [...new Set(nums)];  // [3, 1, 2]
+</script>
+<script type="text/x-code" data-lang="rust">
+use std::collections::HashSet;
+
+let mut seen = HashSet::new();
+seen.insert("a");    // true: it was new
+seen.insert("a");    // false: already there
+seen.contains("a");  // true
+seen.len();          // 1
+
+let nums = vec![3, 1, 3, 2];
+let unique: HashSet<i32> = nums.into_iter().collect();  // {1, 2, 3}
+</script>
+  </div>
+  <p>A JavaScript <code>Set</code> remembers insertion order. A <code>HashSet</code> does not. If you need sorted output, use <code>BTreeSet</code> from the same module. The <code>use</code> line imports it, which <a href="modules.html">lesson 12</a> explains.</p>
+
+  <h3>VecDeque for queues</h3>
+<script type="text/x-code" data-lang="rust">
+use std::collections::VecDeque;
+
+let mut queue = VecDeque::new();
+queue.push_back("first");      // like push
+queue.push_back("second");
+queue.push_front("urgent");    // like unshift, but fast
+queue.pop_front();             // Some("urgent"), like shift, but fast
+</script>
+</section>
+
+<section>
+  <h2 data-short="Mapping table">Array methods: JS to Rust</h2>
+  <p>Bookmark this table. Methods marked "iter" go on <code>v.iter()</code>, the rest go on the vector or slice itself.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>JavaScript</th><th>Rust</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>arr.length</code></td><td><code>v.len()</code></td><td>Returns <code>usize</code></td></tr>
+        <tr><td><code>arr.length === 0</code></td><td><code>v.is_empty()</code></td><td></td></tr>
+        <tr><td><code>arr.push(x)</code></td><td><code>v.push(x)</code></td><td></td></tr>
+        <tr><td><code>arr.pop()</code></td><td><code>v.pop()</code></td><td><code>Option&lt;T&gt;</code></td></tr>
+        <tr><td><code>arr.unshift(x)</code></td><td><code>v.insert(0, x)</code></td><td>Or <code>VecDeque::push_front</code></td></tr>
+        <tr><td><code>arr.shift()</code></td><td><code>v.remove(0)</code></td><td>Panics if empty. Or <code>VecDeque::pop_front</code></td></tr>
+        <tr><td><code>arr.splice(i, n)</code></td><td><code>v.drain(i..i + n)</code></td><td>Also <code>v.splice(range, items)</code></td></tr>
+        <tr><td><code>arr[i]</code></td><td><code>v[i]</code> / <code>v.get(i)</code></td><td>Panic / <code>Option&lt;&amp;T&gt;</code></td></tr>
+        <tr><td><code>arr.at(-1)</code></td><td><code>v.last()</code></td><td><code>Option&lt;&amp;T&gt;</code></td></tr>
+        <tr><td><code>arr.slice(a, b)</code></td><td><code>&amp;v[a..b]</code></td><td>Borrowed. <code>.to_vec()</code> to copy</td></tr>
+        <tr><td><code>[...a, ...b]</code>, <code>a.concat(b)</code></td><td><code>[a, b].concat()</code></td><td>Or <code>a.extend(&amp;b)</code> / <code>iter().chain()</code></td></tr>
+        <tr><td><code>arr.includes(x)</code></td><td><code>v.contains(&amp;x)</code></td><td>Note the <code>&amp;</code></td></tr>
+        <tr><td><code>arr.indexOf(x)</code></td><td>iter <code>.position(|y| *y == x)</code></td><td><code>Option&lt;usize&gt;</code></td></tr>
+        <tr><td><code>arr.find(f)</code></td><td>iter <code>.find(f)</code></td><td><code>Option&lt;&amp;T&gt;</code></td></tr>
+        <tr><td><code>arr.findIndex(f)</code></td><td>iter <code>.position(f)</code></td><td><code>Option&lt;usize&gt;</code></td></tr>
+        <tr><td><code>arr.findLast(f)</code></td><td>iter <code>.rev().find(f)</code></td><td></td></tr>
+        <tr><td><code>arr.map(f)</code></td><td>iter <code>.map(f).collect()</code></td><td></td></tr>
+        <tr><td><code>arr.filter(f)</code></td><td>iter <code>.filter(f).collect()</code></td><td>Or <code>v.retain(f)</code> in place</td></tr>
+        <tr><td><code>arr.reduce(f, init)</code></td><td>iter <code>.fold(init, f)</code></td><td><code>sum()</code>, <code>product()</code> for the usual cases</td></tr>
+        <tr><td><code>arr.forEach(f)</code></td><td><code>for x in &amp;v</code></td><td>Or iter <code>.for_each(f)</code></td></tr>
+        <tr><td><code>arr.some(f)</code> / <code>arr.every(f)</code></td><td>iter <code>.any(f)</code> / <code>.all(f)</code></td><td></td></tr>
+        <tr><td><code>arr.flat()</code></td><td>iter <code>.flatten().collect()</code></td><td>Or <code>v.concat()</code> on a <code>Vec&lt;Vec&lt;T&gt;&gt;</code></td></tr>
+        <tr><td><code>arr.flatMap(f)</code></td><td>iter <code>.flat_map(f).collect()</code></td><td></td></tr>
+        <tr><td><code>arr.entries()</code></td><td>iter <code>.enumerate()</code></td><td>Gives <code>(index, item)</code></td></tr>
+        <tr><td><code>arr.sort(cmp)</code></td><td><code>v.sort()</code>, <code>v.sort_by(cmp)</code>, <code>v.sort_by_key(f)</code></td><td>In place</td></tr>
+        <tr><td><code>arr.reverse()</code></td><td><code>v.reverse()</code></td><td>Or iter <code>.rev()</code></td></tr>
+        <tr><td><code>arr.join(", ")</code></td><td><code>v.join(", ")</code></td><td>Text items only</td></tr>
+        <tr><td><code>arr.fill(x)</code></td><td><code>v.fill(x)</code></td><td></td></tr>
+        <tr><td><code>Array.from({length: n}, (_, i) =&gt; i)</code></td><td><code>(0..n).collect::&lt;Vec&lt;_&gt;&gt;()</code></td><td></td></tr>
+        <tr><td><code>Math.max(...arr)</code></td><td>iter <code>.max()</code></td><td><code>Option</code>. For floats use <code>.copied().fold(f64::MIN, f64::max)</code></td></tr>
+        <tr><td><code>arr.slice(0, n)</code></td><td>iter <code>.take(n)</code></td><td>Also <code>.skip(n)</code></td></tr>
+        <tr><td>lodash <code>zip</code></td><td>iter <code>.zip(other)</code></td><td>Built in</td></tr>
+        <tr><td>lodash <code>chunk</code></td><td><code>v.chunks(n)</code></td><td>Built in. See also <code>windows(n)</code></td></tr>
+        <tr><td><code>new Set(arr)</code></td><td><code>v.into_iter().collect::&lt;HashSet&lt;_&gt;&gt;()</code></td><td></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>Check yourself</h2>
+  <div class="quiz">
+    <details>
+      <summary>What happens when you read <code>v[5]</code> from a vector of length 3?</summary>
+      <div><p>The program panics with "index out of bounds". Use <code>v.get(5)</code> to get <code>None</code> instead.</p></div>
+    </details>
+    <details>
+      <summary>How do you double every number in <code>nums</code> into a new <code>Vec</code>?</summary>
+      <div><p><code>let doubled: Vec&lt;i32&gt; = nums.iter().map(|n| n * 2).collect();</code></p></div>
+    </details>
+    <details>
+      <summary>Why does <code>nums.iter().map(|n| n * 2);</code> alone do nothing?</summary>
+      <div><p>Iterators are lazy. Nothing runs until a final step like <code>collect()</code>, <code>sum()</code> or a <code>for</code> loop pulls the items through.</p></div>
+    </details>
+    <details>
+      <summary>What is the difference between <code>for x in &amp;v</code> and <code>for x in v</code>?</summary>
+      <div><p><code>&amp;v</code> borrows the items, so <code>v</code> is still usable after the loop. Plain <code>v</code> moves the vector into the loop, and you cannot use it afterwards.</p></div>
+    </details>
+    <details>
+      <summary>What does <code>vec![10, 9, 1].sort()</code> give, and how is that different from JavaScript?</summary>
+      <div><p><code>[1, 9, 10]</code>. Rust sorts numbers as numbers. JavaScript's default <code>sort()</code> compares them as text.</p></div>
+    </details>
+    <details>
+      <summary>Which parameter type should a function use to read a list of numbers?</summary>
+      <div><p><code>&amp;[i32]</code>, a slice. It accepts a <code>&amp;Vec&lt;i32&gt;</code>, an array, or part of either.</p></div>
+    </details>
+  </div>
+</section>
+
+</main>
+<script src="assets/app.js"></script>
+</body>
+</html>

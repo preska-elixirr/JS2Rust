@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Modules and packages · Rust from JS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<script>try{var t=localStorage.getItem('rjs-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body data-page="modules.html">
+<main class="lesson">
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 12 · Real programs</p>
+  <h1>Modules and packages</h1>
+  <p class="lead">Cargo does the jobs of npm, package.json scripts, tsc and Jest in one tool. Modules work a bit like ES imports, with one surprise: a file is not part of your program until you declare it.</p>
+</header>
+
+<div class="learn">
+  <p>You will learn</p>
+  <ul>
+    <li>How <code>package.json</code> maps to <code>Cargo.toml</code>, and how version ranges work</li>
+    <li>The Cargo commands that replace <code>npm install</code>, <code>npm run</code> and friends</li>
+    <li>How <code>import</code> and <code>export</code> become <code>mod</code>, <code>use</code> and <code>pub</code></li>
+    <li>How to split code across files and folders, and re-export like a barrel <code>index.ts</code></li>
+    <li>Workspaces, tests, and which crate replaces your favorite npm package</li>
+  </ul>
+</div>
+
+<section>
+  <h2 data-short="Cargo.toml">package.json becomes Cargo.toml</h2>
+  <p>Every Rust project has a <code>Cargo.toml</code> file at its root. It plays the same role as <code>package.json</code>: name, version, and dependencies. The format is TOML instead of JSON. TOML has sections in square brackets and <code>key = value</code> lines.</p>
+  <div class="compare stretch">
+<script type="text/x-code" data-lang="js" data-title="package.json">
+{
+  "name": "my-app",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A small web API",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "vitest": "^1.6.0"
+  }
+}
+</script>
+<script type="text/x-code" data-lang="toml" data-title="Cargo.toml">
+[package]
+name = "my-app"
+version = "0.1.0"
+edition = "2021"
+description = "A small web API"
+
+# No "scripts" section: cargo run, cargo build
+# and cargo test are built in.
+
+[dependencies]
+axum = "0.7"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+
+[dev-dependencies]
+pretty_assertions = "1"
+</script>
+  </div>
+  <ul>
+    <li><code>edition</code> picks the Rust language edition (2015, 2018, 2021, 2024). It is a bit like the <code>target</code> in <code>tsconfig.json</code>. New projects get the latest one automatically.</li>
+    <li><code>[dev-dependencies]</code> works like <code>devDependencies</code>. Those crates are only available in tests, examples and benchmarks.</li>
+    <li>There is no <code>scripts</code> section. The common commands are built into Cargo. For custom tasks, people use a <code>Makefile</code>, a <code>justfile</code>, or a small Rust program.</li>
+    <li><code>Cargo.lock</code> is the lock file, like <code>package-lock.json</code>. Commit it.</li>
+  </ul>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p>There is no <code>node_modules</code> folder in your project. Cargo downloads crates once into a shared cache in your home folder. Build output goes to <code>target/</code>, which you add to <code>.gitignore</code>. <code>cargo new</code> does that for you.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Version numbers and features</h2>
+  <p>Both npm and Cargo use semantic versioning (major.minor.patch). The difference is the default. In npm, the caret <code>^</code> is something <code>npm install</code> adds. In Cargo, a plain version number already means caret.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Cargo.toml</th><th>Same as npm</th><th>Accepts</th></tr></thead>
+      <tbody>
+        <tr><td><code>serde = "1.0.200"</code></td><td><code>"^1.0.200"</code></td><td>1.0.200 and up, below 2.0.0</td></tr>
+        <tr><td><code>serde = "1"</code></td><td><code>"^1"</code></td><td>any 1.x.y</td></tr>
+        <tr><td><code>axum = "0.7"</code></td><td><code>"^0.7"</code></td><td>0.7.x only. Below 1.0, the minor number counts as the major.</td></tr>
+        <tr><td><code>serde = "~1.0.200"</code></td><td><code>"~1.0.200"</code></td><td>1.0.x patches only</td></tr>
+        <tr><td><code>serde = "=1.0.200"</code></td><td><code>"1.0.200"</code></td><td>exactly this version</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p>In npm, <code>"1.0.200"</code> without a caret pins an exact version. In Cargo, the same text allows any compatible 1.x update. Write <code>"=1.0.200"</code> when you really want an exact pin.</p>
+  </aside>
+
+  <h3>Features: optional parts of a crate</h3>
+  <p>Many crates ship optional parts that you switch on with <code>features</code>. Code for a feature you did not turn on is not compiled at all, which keeps builds smaller and faster. npm has no real equivalent. The closest thing is installing an extra plugin package.</p>
+<script type="text/x-code" data-lang="toml" data-title="Cargo.toml">
+[dependencies]
+# serde alone can't derive. The "derive" feature adds #[derive(Serialize, Deserialize)].
+serde = { version = "1", features = ["derive"] }
+
+# reqwest with JSON support, without the default TLS backend
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+</script>
+  <p>If a crate's docs show a macro or function that does not exist in your project, a missing feature is the usual reason. Check the crate's page on docs.rs for a "Feature flags" tab.</p>
+</section>
+
+<section>
+  <h2>Cargo commands for packages</h2>
+  <p>You will use these every day. Most have a direct npm twin.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Task</th><th>npm</th><th>Cargo</th></tr></thead>
+      <tbody>
+        <tr><td>New project</td><td><code>npm init -y</code></td><td><code>cargo new my-app</code></td></tr>
+        <tr><td>Add a dependency</td><td><code>npm install zod</code></td><td><code>cargo add serde</code></td></tr>
+        <tr><td>Add with options</td><td>not needed</td><td><code>cargo add serde --features derive</code></td></tr>
+        <tr><td>Add a dev dependency</td><td><code>npm install -D vitest</code></td><td><code>cargo add --dev pretty_assertions</code></td></tr>
+        <tr><td>Remove a dependency</td><td><code>npm uninstall zod</code></td><td><code>cargo remove serde</code></td></tr>
+        <tr><td>Install from lock file</td><td><code>npm ci</code></td><td>nothing, <code>cargo build</code> does it</td></tr>
+        <tr><td>Update within ranges</td><td><code>npm update</code></td><td><code>cargo update</code></td></tr>
+        <tr><td>Show dependency tree</td><td><code>npm ls</code></td><td><code>cargo tree</code></td></tr>
+        <tr><td>Run the app</td><td><code>npm run dev</code></td><td><code>cargo run</code></td></tr>
+        <tr><td>Build for production</td><td><code>npm run build</code></td><td><code>cargo build --release</code></td></tr>
+        <tr><td>Run tests</td><td><code>npm test</code></td><td><code>cargo test</code></td></tr>
+        <tr><td>Lint</td><td><code>npx eslint .</code></td><td><code>cargo clippy</code></td></tr>
+        <tr><td>Format</td><td><code>npx prettier -w .</code></td><td><code>cargo fmt</code></td></tr>
+        <tr><td>Install a global tool</td><td><code>npm install -g tsx</code></td><td><code>cargo install cargo-watch</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+<script type="text/x-code" data-lang="bash">
+cargo add serde --features derive
+cargo add tokio --features full
+cargo add --dev pretty_assertions
+cargo remove pretty_assertions
+</script>
+
+  <h3>Finding crates</h3>
+  <ul>
+    <li><a href="https://crates.io" target="_blank" rel="noopener">crates.io</a> is the registry, like npmjs.com. Search there, and look at the download counts and the date of the last release.</li>
+    <li><a href="https://docs.rs" target="_blank" rel="noopener">docs.rs</a> hosts the API docs for every crate on crates.io, built from the code itself. Every public function, struct and trait is listed with its exact signature. JavaScript has nothing this consistent.</li>
+    <li>Run <code>cargo doc --open</code> to build the same kind of docs for your own project and all its dependencies, offline.</li>
+  </ul>
+</section>
+
+<section>
+  <h2 data-short="mod, use, pub">import and export become mod, use and pub</h2>
+  <p>In JavaScript, every file is a module, and everything is private until you <code>export</code> it. Rust has the same "private by default" rule. You make an item public with <code>pub</code>, and you bring it into scope with <code>use</code>.</p>
+  <p>To see the idea without files, here is a module written inline with <code>mod</code>:</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+// math.ts
+export function add(a: number, b: number) {
+  return a + b;
+}
+
+function secret() {} // not exported
+
+// main.ts
+import { add } from "./math";
+
+console.log(add(2, 3));
+</script>
+<script type="text/x-code" data-lang="rust">
+mod math {
+    pub fn add(a: i32, b: i32) -> i32 {
+        a + b
+    }
+
+    fn secret() {} // private to `math`
+}
+
+use math::add;
+
+fn main() {
+    println!("{}", add(2, 3));
+    // math::secret();
+    // error[E0603]: function `secret` is private
+}
+</script>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>JavaScript</th><th>Rust</th></tr></thead>
+      <tbody>
+        <tr><td><code>export function f()</code></td><td><code>pub fn f()</code></td></tr>
+        <tr><td><code>import { f } from "./math"</code></td><td><code>use crate::math::f;</code></td></tr>
+        <tr><td><code>import { a, b } from "./math"</code></td><td><code>use crate::math::{a, b};</code></td></tr>
+        <tr><td><code>import { a as b } from "./math"</code></td><td><code>use crate::math::a as b;</code></td></tr>
+        <tr><td><code>import * as math from "./math"</code></td><td><code>use crate::math;</code> then <code>math::add()</code></td></tr>
+        <tr><td><code>import fs from "node:fs"</code></td><td><code>use std::fs;</code></td></tr>
+        <tr><td><code>import express from "express"</code></td><td>nothing needed, or <code>use axum::Router;</code></td></tr>
+        <tr><td><code>export * from "./user"</code></td><td><code>pub use user::*;</code></td></tr>
+        <tr><td><code>export default</code></td><td>no equivalent. Everything has a name.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <aside class="callout note">
+    <p class="callout-title">Mental model</p>
+    <p><code>use</code> never loads anything. It only creates a shortcut name. You can always skip it and write the full path, like <code>std::collections::HashMap::new()</code>. Crates from <code>Cargo.toml</code> are available by name everywhere, with no import step.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Splitting code into files</h2>
+  <p>Here is the big difference from JavaScript. Creating a file does not add it to your program. The parent module has to declare it with <code>mod name;</code>. Rust then looks for <code>name.rs</code>, or <code>name/mod.rs</code>, next to the parent.</p>
+<script type="text/x-code" data-lang="text" data-title="Project layout">
+my-app/
+├── Cargo.toml
+├── Cargo.lock
+└── src/
+    ├── main.rs        ← entry point. Declares: mod config; mod routes;
+    ├── config.rs      ← module `config`
+    └── routes/
+        ├── mod.rs     ← module `routes`. Declares: pub mod users;
+        └── users.rs   ← module `routes::users`
+</script>
+  <div class="compare">
+<script type="text/x-code" data-lang="rust" data-title="src/main.rs">
+mod config; // load src/config.rs as `config`
+mod routes; // load src/routes/mod.rs as `routes`
+
+use routes::users::list_users;
+
+fn main() {
+    let cfg = config::load();
+    list_users(&cfg);
+}
+</script>
+<script type="text/x-code" data-lang="rust" data-title="src/config.rs">
+pub struct Config {
+    pub port: u16,
+}
+
+pub fn load() -> Config {
+    Config { port: 3000 }
+}
+</script>
+  </div>
+  <div class="compare">
+<script type="text/x-code" data-lang="rust" data-title="src/routes/mod.rs">
+pub mod users; // load src/routes/users.rs
+</script>
+<script type="text/x-code" data-lang="rust" data-title="src/routes/users.rs">
+use crate::config::Config;
+
+pub fn list_users(cfg: &Config) {
+    println!("Listing users on port {}", cfg.port);
+}
+</script>
+  </div>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p>You create <code>src/utils.rs</code>, write a function in it, and <code>use crate::utils</code> fails with "unresolved import". The file exists, but nobody declared it. Add <code>mod utils;</code> to <code>main.rs</code> (or <code>lib.rs</code>). The editor plugin rust-analyzer also warns you that the file is not part of the module tree.</p>
+  </aside>
+  <p>Instead of <code>routes/mod.rs</code>, you can also write <code>routes.rs</code> next to the <code>routes/</code> folder. Both styles work. Newer projects tend to use <code>routes.rs</code>, so your editor does not show ten tabs called <code>mod.rs</code>. Pick one per project.</p>
+</section>
+
+<section>
+  <h2>Paths: crate, super and self</h2>
+  <p>JavaScript imports use file paths like <code>"./x"</code> and <code>"../x"</code>. Rust uses module paths with <code>::</code> between the parts. Three keywords tell Rust where to start.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Rust path</th><th>Starts at</th><th>Like in JS</th></tr></thead>
+      <tbody>
+        <tr><td><code>crate::config::Config</code></td><td>the root of your crate (<code>main.rs</code> or <code>lib.rs</code>)</td><td>a path alias like <code>"@/config"</code></td></tr>
+        <tr><td><code>super::helpers</code></td><td>the parent module</td><td><code>"../helpers"</code></td></tr>
+        <tr><td><code>self::helpers</code></td><td>the current module</td><td><code>"./helpers"</code></td></tr>
+        <tr><td><code>std::fs</code>, <code>serde::Serialize</code></td><td>an external crate</td><td><code>"node:fs"</code>, <code>"zod"</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+<script type="text/x-code" data-lang="rust" data-title="src/routes/users.rs">
+use crate::config::Config;       // from the crate root, works anywhere
+use super::auth::require_login;  // from the parent module `routes`
+use std::collections::{HashMap, HashSet};
+use std::io::{self, Write};      // brings in `io` and `io::Write`
+</script>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p>Prefer <code>crate::</code> paths in app code. They work the same from any file, so moving code around breaks fewer imports. Save <code>super::</code> for tests and for modules that belong tightly to their parent.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Visibility: pub and its smaller versions</h2>
+  <p>Everything is private by default. Private means "visible inside this module and its child modules". You can open things up step by step.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Keyword</th><th>Who can use it</th><th>Closest JS / TS idea</th></tr></thead>
+      <tbody>
+        <tr><td>nothing</td><td>this module and its children</td><td>not exported</td></tr>
+        <tr><td><code>pub(super)</code></td><td>the parent module too</td><td>none</td></tr>
+        <tr><td><code>pub(crate)</code></td><td>anywhere in this crate, not outside it</td><td>exported from a file, but not from the package entry</td></tr>
+        <tr><td><code>pub</code></td><td>everyone, including other crates</td><td><code>export</code> from the package</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Struct fields have their own visibility. A <code>pub struct</code> can still keep some fields private. This works like <code>private</code> in a TypeScript class, but the compiler enforces it at every use, not only in the type checker.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+export class User {
+  constructor(
+    public name: string,
+    private passwordHash: string,
+  ) {}
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+pub struct User {
+    pub name: String,
+    password_hash: String, // private, even though the struct is pub
+}
+</script>
+  </div>
+  <p>Because <code>password_hash</code> is private, code outside the module cannot build a <code>User</code> with <code>User { ... }</code> either. You provide a <code>pub fn new(...)</code> constructor instead. That is how Rust protects rules like "a user always has a valid hash".</p>
+</section>
+
+<section>
+  <h2 data-short="Re-exports">Re-exports instead of barrel files</h2>
+  <p>In TypeScript, an <code>index.ts</code> barrel file re-exports things so callers get a short import path. Rust does the same with <code>pub use</code>.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+// models/index.ts
+export { User } from "./user";
+export { Post } from "./post";
+
+// anywhere else
+import { User, Post } from "./models";
+</script>
+<script type="text/x-code" data-lang="rust">
+// src/models/mod.rs
+mod user;   // private module
+mod post;   // private module
+
+pub use user::User;
+pub use post::Post;
+
+// anywhere else
+use crate::models::{Post, User};
+</script>
+  </div>
+  <p>The inner modules <code>user</code> and <code>post</code> stay private. Outside code sees <code>models::User</code> but cannot reach <code>models::user::User</code>. You can reorganize the files later without breaking anyone's imports. Big crates use this all the time, which is why docs.rs shows short paths like <code>tokio::spawn</code>.</p>
+</section>
+
+<section>
+  <h2>Binary and library crates</h2>
+  <p>A crate is either a binary (a program you run) or a library (code other crates use). Cargo decides from the file name.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>File</th><th>Crate type</th><th>Create with</th><th>Like in JS</th></tr></thead>
+      <tbody>
+        <tr><td><code>src/main.rs</code></td><td>binary, must have <code>fn main()</code></td><td><code>cargo new my-app</code></td><td>an app with a <code>start</code> script</td></tr>
+        <tr><td><code>src/lib.rs</code></td><td>library</td><td><code>cargo new --lib my-lib</code></td><td>a package with a <code>main</code> or <code>exports</code> field</td></tr>
+        <tr><td><code>src/bin/*.rs</code></td><td>extra binaries</td><td>add the file</td><td>several entries in <code>bin</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>A package can have both <code>main.rs</code> and <code>lib.rs</code>. This is a common pattern: put the real logic in the library and keep <code>main.rs</code> thin. The library takes the package name, with dashes turned into underscores.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="rust" data-title="src/lib.rs">
+pub mod config;
+pub mod routes;
+
+pub fn run() {
+    let cfg = config::load();
+    routes::users::list_users(&cfg);
+}
+</script>
+<script type="text/x-code" data-lang="rust" data-title="src/main.rs">
+// package "my-app" gives a library called my_app
+fn main() {
+    my_app::run();
+}
+</script>
+  </div>
+  <p>With this split, integration tests (shown below) can call your library directly. In this layout, <code>main.rs</code> does not repeat the <code>mod</code> lines. The modules belong to the library.</p>
+</section>
+
+<section>
+  <h2>Workspaces for monorepos</h2>
+  <p>If you use npm, pnpm or Yarn workspaces for a monorepo, Cargo workspaces will feel familiar. One root <code>Cargo.toml</code> lists the member crates. They share one <code>Cargo.lock</code> and one <code>target/</code> folder, so shared dependencies compile only once.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="text" data-title="pnpm-workspace.yaml">
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# apps/api/package.json
+#   "dependencies": { "shared": "workspace:*" }
+</script>
+<script type="text/x-code" data-lang="toml" data-title="Cargo.toml (repo root)">
+[workspace]
+members = ["api", "worker", "shared"]
+resolver = "2"
+
+# api/Cargo.toml then says:
+# [dependencies]
+# shared = { path = "../shared" }
+</script>
+  </div>
+<script type="text/x-code" data-lang="bash">
+cargo build                 # build every crate in the workspace
+cargo run -p api            # run one member, like pnpm --filter api dev
+cargo test -p shared        # test one member
+</script>
+</section>
+
+<section>
+  <h2>Tests are built in</h2>
+  <p>In JavaScript you install Jest or Vitest. In Rust, the test runner is part of Cargo. Unit tests usually live at the bottom of the same file as the code, inside a <code>tests</code> module.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts" data-title="math.test.ts">
+import { describe, it, expect } from "vitest";
+import { add } from "./math";
+
+describe("add", () => {
+  it("adds two numbers", () => {
+    expect(add(2, 3)).toBe(5);
+  });
+
+  it("handles negatives", () => {
+    expect(add(-1, 1)).toBe(0);
+  });
+});
+</script>
+<script type="text/x-code" data-lang="rust" data-title="src/math.rs">
+pub fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn adds_two_numbers() {
+        assert_eq!(add(2, 3), 5);
+    }
+
+    #[test]
+    fn handles_negatives() {
+        assert_eq!(add(-1, 1), 0);
+    }
+
+    #[test]
+    #[should_panic]
+    fn overflow_panics() {
+        add(i32::MAX, 1);
+    }
+}
+</script>
+  </div>
+  <ul>
+    <li><code>#[cfg(test)]</code> means "only compile this module when running tests". It never ends up in your real program.</li>
+    <li><code>use super::*;</code> pulls in everything from the parent module, including private functions. Rust lets you test private code directly.</li>
+    <li><code>#[test]</code> marks a function as a test. A test passes if it returns without panicking.</li>
+  </ul>
+<script type="text/x-code" data-lang="output" data-title="cargo test">
+running 3 tests
+test tests::adds_two_numbers ... ok
+test tests::handles_negatives ... ok
+test tests::overflow_panics - should panic ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+</script>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Jest / Vitest</th><th>Rust</th></tr></thead>
+      <tbody>
+        <tr><td><code>describe("add", ...)</code></td><td><code>mod add_tests { ... }</code></td></tr>
+        <tr><td><code>it("works", () =&gt; ...)</code></td><td><code>#[test] fn works() { ... }</code></td></tr>
+        <tr><td><code>expect(a).toBe(b)</code>, <code>toEqual(b)</code></td><td><code>assert_eq!(a, b);</code></td></tr>
+        <tr><td><code>expect(a).not.toBe(b)</code></td><td><code>assert_ne!(a, b);</code></td></tr>
+        <tr><td><code>expect(ok).toBe(true)</code></td><td><code>assert!(ok);</code></td></tr>
+        <tr><td><code>expect(fn).toThrow()</code></td><td><code>#[should_panic]</code>, or <code>assert!(result.is_err());</code></td></tr>
+        <tr><td><code>it.skip(...)</code></td><td><code>#[ignore]</code></td></tr>
+        <tr><td><code>vitest add</code> (filter by name)</td><td><code>cargo test add</code></td></tr>
+        <tr><td>async test</td><td><code>#[tokio::test] async fn ...</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><code>assert!</code> and friends accept an optional message, formatted like <code>println!</code>: <code>assert!(age &gt;= 18, "age was {age}");</code>.</p>
+
+  <h3>Integration tests</h3>
+  <p>Files in a top-level <code>tests/</code> folder are integration tests. Each file is compiled as a separate crate that uses your library from the outside, so it can only reach <code>pub</code> items. This needs a <code>lib.rs</code>.</p>
+<script type="text/x-code" data-lang="rust" data-title="tests/math.rs">
+use my_app::math::add;
+
+#[test]
+fn add_works_from_outside() {
+    assert_eq!(add(20, 22), 42);
+}
+</script>
+</section>
+
+<section>
+  <h2 data-short="The crate for that">Which crate replaces your npm package</h2>
+  <p>Here are the usual answers for the packages a TypeScript developer reaches for. All of them are popular and well maintained.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>You use in JS</th><th>Rust crate</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>express, fastify, hono</td><td><code>axum</code></td><td>Web framework from the tokio team. <code>actix-web</code> is the other big option.</td></tr>
+        <tr><td>axios, fetch</td><td><code>reqwest</code></td><td>HTTP client. See <a href="async.html">lesson 13</a>.</td></tr>
+        <tr><td>JSON.parse + zod</td><td><code>serde</code> + <code>serde_json</code></td><td>Parsing into a typed struct already checks the shape. Add <code>validator</code> or <code>garde</code> for rules like "valid email".</td></tr>
+        <tr><td>lodash</td><td><code>itertools</code></td><td>Most of lodash is already in the standard iterator methods. itertools adds the rest.</td></tr>
+        <tr><td>dotenv</td><td><code>dotenvy</code></td><td>Loads <code>.env</code> into environment variables.</td></tr>
+        <tr><td>date-fns, dayjs, Luxon</td><td><code>chrono</code> or <code>jiff</code></td><td>chrono is the long-time standard. jiff is newer, with better time zone handling.</td></tr>
+        <tr><td>jest, vitest</td><td><code>cargo test</code></td><td>Built in. Add <code>pretty_assertions</code> for nicer diffs.</td></tr>
+        <tr><td>prisma, drizzle, knex</td><td><code>sqlx</code>, <code>diesel</code>, <code>sea-orm</code></td><td>sqlx checks your raw SQL against the real database at compile time. diesel and sea-orm are ORMs.</td></tr>
+        <tr><td>commander, yargs</td><td><code>clap</code></td><td>Command line parsing. Derive it from a struct.</td></tr>
+        <tr><td>pino, winston</td><td><code>tracing</code> + <code>tracing-subscriber</code></td><td>Structured logging. The <code>log</code> crate is the simpler option.</td></tr>
+        <tr><td>uuid</td><td><code>uuid</code></td><td>Same name. Turn on the <code>v4</code> or <code>v7</code> feature.</td></tr>
+        <tr><td>nodemon, tsx watch</td><td><code>cargo-watch</code> or <code>bacon</code></td><td>Install with <code>cargo install</code>. Rebuilds on save.</td></tr>
+        <tr><td>eslint</td><td><code>clippy</code></td><td>Ships with Rust. Run <code>cargo clippy</code>.</td></tr>
+        <tr><td>prettier</td><td><code>rustfmt</code></td><td>Ships with Rust. Run <code>cargo fmt</code>. There is one style, with very few options.</td></tr>
+        <tr><td>ws, socket.io</td><td><code>tokio-tungstenite</code></td><td>WebSockets. axum also has built-in WebSocket support.</td></tr>
+        <tr><td>built-in RegExp</td><td><code>regex</code></td><td>Not in the standard library. No lookbehind, but matching always runs in linear time.</td></tr>
+        <tr><td><code>Math.random()</code></td><td><code>rand</code></td><td>Also not in the standard library.</td></tr>
+        <tr><td>Node runtime, event loop</td><td><code>tokio</code></td><td>The async runtime almost every network crate builds on.</td></tr>
+        <tr><td>custom Error classes</td><td><code>thiserror</code>, <code>anyhow</code></td><td>See <a href="errors.html">lesson 10</a>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <aside class="callout note">
+    <p class="callout-title">Mental model</p>
+    <p>Rust's standard library is small on purpose. Random numbers, regex, dates and HTTP all live in crates. That surprises people, but those crates are as standard in practice as the built-ins are in Node. Do not hesitate to add them.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Check yourself</h2>
+  <div class="quiz">
+    <details>
+      <summary>You created <code>src/utils.rs</code>, but <code>use crate::utils;</code> fails. Why?</summary>
+      <div><p>Nobody declared the module. Add <code>mod utils;</code> to <code>main.rs</code> or <code>lib.rs</code>. A file is only part of the program once its parent declares it.</p></div>
+    </details>
+    <details>
+      <summary>What versions does <code>serde = "1.0.150"</code> accept?</summary>
+      <div><p>Any version from 1.0.150 up to, but not including, 2.0.0. A plain version in Cargo means the same as <code>^1.0.150</code> in npm. Use <code>=1.0.150</code> to pin it exactly.</p></div>
+    </details>
+    <details>
+      <summary>How do you make a function usable everywhere in your crate, but not by other crates?</summary>
+      <div><p>Mark it <code>pub(crate) fn ...</code>.</p></div>
+    </details>
+    <details>
+      <summary>What replaces <code>npm install -D vitest</code>?</summary>
+      <div><p>Nothing for the test runner, because <code>cargo test</code> is built in. For other dev-only crates, use <code>cargo add --dev name</code>.</p></div>
+    </details>
+    <details>
+      <summary>Where do unit tests usually live in Rust?</summary>
+      <div><p>At the bottom of the same file as the code, in a <code>#[cfg(test)] mod tests { use super::*; ... }</code> block. Integration tests go in the <code>tests/</code> folder.</p></div>
+    </details>
+    <details>
+      <summary>What is the Rust version of an <code>index.ts</code> barrel file?</summary>
+      <div><p><code>pub use</code> lines in the parent module, for example <code>pub use user::User;</code> in <code>models/mod.rs</code>.</p></div>
+    </details>
+  </div>
+</section>
+
+</main>
+<script src="assets/app.js"></script>
+</body>
+</html>

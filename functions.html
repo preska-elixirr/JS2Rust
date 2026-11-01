@@ -1,0 +1,646 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Functions and closures · Rust from JS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<script>try{var t=localStorage.getItem('rjs-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body data-page="functions.html">
+<main class="lesson">
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 03 · Core syntax</p>
+  <h1>Functions and closures</h1>
+  <p class="lead">Rust functions look like TypeScript functions with the types required. The surprises are small but important: the last line returns by itself, there are no default parameters, and closures use pipes instead of arrows.</p>
+</header>
+
+<div class="learn">
+  <p>You will learn</p>
+  <ul>
+    <li>How to write a function with typed parameters and a return type</li>
+    <li>Why the last expression returns without <code>return</code>, and how one semicolon breaks that</li>
+    <li>What to do instead of default parameters and overloads</li>
+    <li>How closures compare to arrow functions, and what <code>move</code> means</li>
+    <li>How to pass functions around with <code>impl Fn</code></li>
+  </ul>
+</div>
+
+<section>
+  <h2 data-short="Defining">Defining a function</h2>
+  <p>You write <code>fn</code> instead of <code>function</code>. Parameter types use a colon, the same as TypeScript. The return type comes after an arrow <code>-&gt;</code> instead of a colon.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+function add(a: number, b: number): number {
+  return a + b;
+}
+
+const greet = (name: string): string => {
+  return `Hello, ${name}!`;
+};
+
+console.log(add(2, 3));     // 5
+console.log(greet("Ana"));  // Hello, Ana!
+</script>
+<script type="text/x-code" data-lang="rust">
+fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+fn greet(name: &str) -> String {
+    format!("Hello, {name}!")
+}
+
+println!("{}", add(2, 3));     // 5
+println!("{}", greet("Ana"));  // Hello, Ana!
+</script>
+  </div>
+  <ul>
+    <li>Parameter types are always required. Rust never infers them for named functions, even when it could.</li>
+    <li>The return type is required too, unless the function returns nothing.</li>
+    <li>Function names use <code>snake_case</code>: <code>get_user</code>, not <code>getUser</code>.</li>
+    <li>Order does not matter. You can call a function that is defined further down the file, like a hoisted JS function declaration.</li>
+  </ul>
+  <aside class="callout note">
+    <p class="callout-title">Mental model</p>
+    <p>The type annotations on a function are its contract. Inside the function Rust infers almost everything, but the signature must be spelled out so that callers and the compiler can check calls without reading the body.</p>
+  </aside>
+  <p>Text parameters are usually <code>&amp;str</code> (a borrowed piece of text) and text return values are usually <code>String</code> (text the caller owns). Why there are two string types is the subject of <a href="strings.html">lesson 6</a>. For now, copy the pattern.</p>
+</section>
+
+<section>
+  <h2 data-short="Implicit return">The last expression is the return value</h2>
+  <p>Look again at <code>add</code>. There is no <code>return</code> keyword and no semicolon after <code>a + b</code>. In Rust, the last expression in a block is the value of that block. For a function body, that value is what the function returns.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+// Arrow functions have a short form
+const square = (n: number) => n * n;
+
+// Function bodies need return
+function cube(n: number): number {
+  return n * n * n;
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+// Every function works like the short form
+fn square(n: i32) -> i32 {
+    n * n
+}
+
+fn cube(n: i32) -> i32 {
+    n * n * n
+}
+</script>
+  </div>
+  <p>You can still write <code>return n * n;</code>. It works, and nothing is wrong with it. But idiomatic Rust leaves it off for the final value, and Clippy will suggest that you do too.</p>
+</section>
+
+<section>
+  <h2 data-short="Semicolons">Statements vs expressions: the semicolon rule</h2>
+  <p>This trips up every JavaScript developer once. In Rust, putting a semicolon after an expression turns it into a statement. A statement has no value. So adding a semicolon to the last line means the function returns nothing.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="rust" data-title="Works">
+fn add(a: i32, b: i32) -> i32 {
+    a + b       // expression: the value is returned
+}
+</script>
+<script type="text/x-code" data-lang="rust" data-title="Does not compile">
+fn add(a: i32, b: i32) -> i32 {
+    a + b;      // statement: the value is thrown away
+}
+</script>
+  </div>
+<script type="text/x-code" data-lang="output" data-title="Compiler error">
+error[E0308]: mismatched types
+ --> src/main.rs:1:27
+  |
+1 | fn add(a: i32, b: i32) -> i32 {
+  |    ---                    ^^^ expected `i32`, found `()`
+  |    |
+  |    implicit returns `()` as its body has no tail or `return` expression
+2 |     a + b;
+  |          - help: remove this semicolon to return this value
+</script>
+  <p>Notice the compiler tells you the exact fix. The <code>()</code> in the message is the unit type, Rust's "nothing" value. It shows up whenever something has no useful value.</p>
+
+  <h3>Blocks are expressions too</h3>
+  <p>The same rule works for any pair of curly braces, not only function bodies. A block runs its statements, then gives back its last expression. This lets you compute a value in a few steps without a helper function or a temporary <code>let</code> outside.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+// An IIFE to compute a value in steps
+const area = (() => {
+  const width = 4;
+  const height = 5;
+  return width * height;
+})();
+</script>
+<script type="text/x-code" data-lang="rust">
+// A plain block does the same job
+let area = {
+    let width = 4;
+    let height = 5;
+    width * height
+};
+</script>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Statements (no value)</th><th>Expressions (have a value)</th></tr></thead>
+      <tbody>
+        <tr><td><code>let x = 5;</code></td><td><code>5</code>, <code>x + 1</code>, <code>add(1, 2)</code></td></tr>
+        <tr><td>anything ending in <code>;</code></td><td>a block <code>{ ... }</code> whose last line has no <code>;</code></td></tr>
+        <tr><td><code>fn</code> and <code>struct</code> definitions</td><td><code>if</code>, <code>match</code> and <code>loop</code> (see <a href="control-flow.html">lesson 4</a>)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>Early return</h2>
+  <p>For leaving a function early, <code>return</code> works exactly as in JavaScript. Guard clauses look the same.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+function discount(total: number): number {
+  if (total < 50) {
+    return 0;
+  }
+  if (total > 500) {
+    return 100;
+  }
+  return total * 0.1;
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+fn discount(total: f64) -> f64 {
+    if total < 50.0 {
+        return 0.0;
+    }
+    if total > 500.0 {
+        return 100.0;
+    }
+    total * 0.1
+}
+</script>
+  </div>
+  <p>The usual style: <code>return</code> with a semicolon for early exits, and a bare expression for the final value.</p>
+</section>
+
+<section>
+  <h2 data-short="Default params">No default parameters</h2>
+  <p>Rust has no default parameter values and no optional parameters. Every call passes every argument. There are three common ways to get the same effect.</p>
+
+  <h3>Option 1: an Option parameter</h3>
+  <p>For one or two optional values, take an <code>Option</code>. The caller passes <code>Some(value)</code> or <code>None</code>. <a href="errors.html">Lesson 10</a> covers <code>Option</code> in depth.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+function greet(name: string, greeting = "Hello") {
+  return `${greeting}, ${name}!`;
+}
+
+greet("Ana");          // Hello, Ana!
+greet("Bo", "Hi");     // Hi, Bo!
+</script>
+<script type="text/x-code" data-lang="rust">
+fn greet(name: &str, greeting: Option<&str>) -> String {
+    let greeting = greeting.unwrap_or("Hello");
+    format!("{greeting}, {name}!")
+}
+
+greet("Ana", None);        // Hello, Ana!
+greet("Bo", Some("Hi"));   // Hi, Bo!
+</script>
+  </div>
+
+  <h3>Option 2: two functions with clear names</h3>
+  <p>Often the cleanest answer is a second function. The standard library does this a lot: <code>Vec::new()</code> and <code>Vec::with_capacity(10)</code>, <code>split</code> and <code>splitn</code>.</p>
+<script type="text/x-code" data-lang="rust">
+fn greet(name: &str) -> String {
+    greet_with(name, "Hello")
+}
+
+fn greet_with(name: &str, greeting: &str) -> String {
+    format!("{greeting}, {name}!")
+}
+</script>
+
+  <h3>Option 3: an options struct</h3>
+  <p>For many settings, JavaScript passes an options object. Rust does the same with a struct, and the <code>Default</code> trait fills in the values you leave out. The <code>..Default::default()</code> part works like <code>...defaults</code> in an object spread.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+interface FetchOptions {
+  retries?: number;
+  timeoutMs?: number;
+  verbose?: boolean;
+}
+
+function fetchData(url: string, opts: FetchOptions = {}) {
+  const { retries = 3, timeoutMs = 5000, verbose = false } = opts;
+  // ...
+}
+
+fetchData("/api", { verbose: true });
+</script>
+<script type="text/x-code" data-lang="rust">
+struct FetchOptions {
+    retries: u32,
+    timeout_ms: u64,
+    verbose: bool,
+}
+
+impl Default for FetchOptions {
+    fn default() -> Self {
+        FetchOptions { retries: 3, timeout_ms: 5000, verbose: false }
+    }
+}
+
+fn fetch_data(url: &str, opts: FetchOptions) {
+    // ...
+}
+
+fetch_data("/api", FetchOptions { verbose: true, ..Default::default() });
+</script>
+  </div>
+</section>
+
+<section>
+  <h2 data-short="Overloading">No overloading either</h2>
+  <p>TypeScript lets you write several signatures for one function name. Rust allows exactly one function per name in a scope. You give each version its own name, or use generics and traits (<a href="traits.html">lesson 11</a>) when the logic is truly the same for many types.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+function area(radius: number): number;
+function area(width: number, height: number): number;
+function area(a: number, b?: number): number {
+  return b === undefined ? Math.PI * a * a : a * b;
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+fn circle_area(radius: f64) -> f64 {
+    std::f64::consts::PI * radius * radius
+}
+
+fn rect_area(width: f64, height: f64) -> f64 {
+    width * height
+}
+</script>
+  </div>
+  <p>This feels like more typing at first. In practice the names make calls easier to read, because <code>rect_area(3.0, 4.0)</code> says what it does.</p>
+</section>
+
+<section>
+  <h2 data-short="Returning nothing">Functions that return nothing</h2>
+  <p>Leave out the <code>-&gt;</code> part entirely. The function then returns <code>()</code>, the unit type, which plays the role of <code>void</code>.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+function logLine(msg: string): void {
+  console.log(`[log] ${msg}`);
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+fn log_line(msg: &str) {
+    println!("[log] {msg}");
+}
+// same as: fn log_line(msg: &str) -> () { ... }
+</script>
+  </div>
+  <p>There is also a "never returns" type, written <code>!</code>. Functions that always crash or loop forever use it. <code>panic!</code> and <code>std::process::exit</code> are examples. TypeScript calls this <code>never</code>.</p>
+</section>
+
+<section>
+  <h2 data-short="Closures">Closures vs arrow functions</h2>
+  <p>A closure is an anonymous function you can store in a variable or pass to another function. It is Rust's arrow function. The parameters go between two pipes <code>|...|</code> instead of parentheses, and there is no arrow.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const addOne = (x: number) => x + 1;
+const add = (a: number, b: number) => a + b;
+const sayHi = () => console.log("hi");
+
+const shout = (s: string) => {
+  const upper = s.toUpperCase();
+  return `${upper}!`;
+};
+
+addOne(5);   // 6
+</script>
+<script type="text/x-code" data-lang="rust">
+let add_one = |x: i32| x + 1;
+let add = |a: i32, b: i32| a + b;
+let say_hi = || println!("hi");
+
+let shout = |s: &str| {
+    let upper = s.to_uppercase();
+    format!("{upper}!")
+};
+
+add_one(5);  // 6
+</script>
+  </div>
+  <ul>
+    <li>Closure parameter types are usually optional. Rust infers them from the first use.</li>
+    <li>A one-expression closure needs no braces, like a short arrow function.</li>
+    <li>A multi-line closure uses braces, and the last expression is its value. No <code>return</code> needed.</li>
+    <li>You can write a return type, but then braces are required: <code>|a: i32, b: i32| -&gt; i32 { a + b }</code>.</li>
+  </ul>
+  <p>You will use closures all the time with iterators, exactly where you use arrow functions with <code>map</code> and <code>filter</code> in JavaScript:</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const doubled = [1, 2, 3].map((n) => n * 2);
+</script>
+<script type="text/x-code" data-lang="rust">
+let doubled: Vec<i32> = vec![1, 2, 3].iter().map(|n| n * 2).collect();
+</script>
+  </div>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p>Once Rust infers a closure's parameter types, they are fixed. Calling <code>let id = |x| x;</code> first with a number and then with a string fails. A closure is not generic the way <code>const id = (x) =&gt; x</code> is in JavaScript.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="Capturing">Capturing variables</h2>
+  <p>Like arrow functions, closures can use variables from the scope around them. This part feels very familiar.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const taxRate = 0.2;
+const withTax = (price) => price * (1 + taxRate);
+
+console.log(withTax(100));  // 120
+</script>
+<script type="text/x-code" data-lang="rust">
+let tax_rate = 0.2;
+let with_tax = |price: f64| price * (1.0 + tax_rate);
+
+println!("{}", with_tax(100.0));  // 120
+</script>
+  </div>
+  <p>The difference shows up when a closure changes a captured variable. Both the variable and the closure must be <code>mut</code>, because calling the closure changes something.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+let count = 0;
+const increment = () => {
+  count += 1;
+};
+
+increment();
+increment();
+console.log(count);  // 2
+</script>
+<script type="text/x-code" data-lang="rust">
+let mut count = 0;
+let mut increment = || {
+    count += 1;
+};
+
+increment();
+increment();
+println!("{count}");  // 2
+</script>
+  </div>
+  <aside class="callout note">
+    <p class="callout-title">Mental model</p>
+    <p>While a closure that changes <code>count</code> is still in use, nothing else may touch <code>count</code>. Rust allows reading it again only after the last call to <code>increment</code>. This is the borrowing rule from <a href="ownership.html">lesson 5</a>, applied to closures. It prevents the "who changed this variable?" bugs that shared state causes in JavaScript.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="move">move closures</h2>
+  <p>By default a closure borrows the variables it uses. It looks at them where they live. Writing <code>move</code> before the pipes makes the closure take ownership of them instead. You need this when the closure outlives the current scope, for example when it runs on another thread or is returned from a function.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const name = "Ana";
+
+setTimeout(() => {
+  // the closure keeps `name` alive for as long as it needs
+  console.log(`Hello later, ${name}`);
+}, 1000);
+</script>
+<script type="text/x-code" data-lang="rust">
+use std::thread;
+
+let name = String::from("Ana");
+
+let handle = thread::spawn(move || {
+    // `name` now belongs to this closure
+    println!("Hello from a thread, {name}");
+});
+handle.join().unwrap();
+</script>
+  </div>
+  <p>In JavaScript the garbage collector keeps captured variables alive automatically. Rust has no garbage collector, so you decide: borrow (the default) or move. Without <code>move</code> here, the compiler stops you with error E0373, "closure may outlive the current function, but it borrows `name`", and suggests adding <code>move</code>.</p>
+</section>
+
+<section>
+  <h2 data-short="Functions as arguments">Passing functions as arguments</h2>
+  <p>In TypeScript you type a callback as <code>(n: number) =&gt; number</code>. In Rust you write <code>impl Fn(i32) -&gt; i32</code>, which reads as "any function or closure that takes an <code>i32</code> and returns an <code>i32</code>". Named functions and closures both fit.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+function applyTwice(f: (n: number) => number, x: number) {
+  return f(f(x));
+}
+
+function double(n: number) {
+  return n * 2;
+}
+
+applyTwice(double, 3);         // 12
+applyTwice((n) => n + 10, 3);  // 23
+</script>
+<script type="text/x-code" data-lang="rust">
+fn apply_twice(f: impl Fn(i32) -> i32, x: i32) -> i32 {
+    f(f(x))
+}
+
+fn double(n: i32) -> i32 {
+    n * 2
+}
+
+apply_twice(double, 3);         // 12
+apply_twice(|n| n + 10, 3);     // 23
+</script>
+  </div>
+
+  <h3>Fn, FnMut and FnOnce</h3>
+  <p>Rust sorts callbacks into three kinds, based on what they do with captured variables. The compiler picks the right kind for each closure automatically. You only choose one when you write a function that accepts a closure.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Kind</th><th>What the closure may do</th><th>Can be called</th><th>Use it when</th></tr></thead>
+      <tbody>
+        <tr><td><code>Fn</code></td><td>only read captured variables</td><td>many times</td><td>the callback just computes something</td></tr>
+        <tr><td><code>FnMut</code></td><td>change captured variables</td><td>many times</td><td>the callback counts, collects or updates state</td></tr>
+        <tr><td><code>FnOnce</code></td><td>use up (move out) captured values</td><td>once</td><td>you call it exactly once, like a "finally" handler</td></tr>
+      </tbody>
+    </table>
+  </div>
+<script type="text/x-code" data-lang="rust">
+// FnMut: the callback changes `log`
+fn repeat(times: u32, mut action: impl FnMut()) {
+    for _ in 0..times {
+        action();
+    }
+}
+
+let mut log = Vec::new();
+repeat(3, || log.push("tick"));
+println!("{log:?}");   // ["tick", "tick", "tick"]
+
+// FnOnce: the callback gives away `name`, so it can only run once
+fn run_once(f: impl FnOnce() -> String) -> String {
+    f()
+}
+
+let name = String::from("Ana");
+let greeting = run_once(move || name + "!");
+println!("{greeting}");  // Ana!
+</script>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p>Not sure which one to pick? Start with <code>impl Fn</code>. If the compiler complains that the closure changes something, switch to <code>impl FnMut</code>. The error message names the one you need.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Returning closures</h2>
+  <p>Function factories work the same way. Return type <code>impl Fn(i32) -&gt; i32</code>, and use <code>move</code> so the closure takes the captured value with it.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const makeAdder = (n: number) => (x: number) => x + n;
+
+const add5 = makeAdder(5);
+console.log(add5(10));  // 15
+</script>
+<script type="text/x-code" data-lang="rust">
+fn make_adder(n: i32) -> impl Fn(i32) -> i32 {
+    move |x| x + n
+}
+
+let add5 = make_adder(5);
+println!("{}", add5(10));  // 15
+</script>
+  </div>
+  <p><code>impl Fn</code> works when the function always returns the same closure. If different branches return different closures, wrap them in a box: <code>Box&lt;dyn Fn(i32) -&gt; i32&gt;</code>. <a href="traits.html">Lesson 11</a> explains what <code>dyn</code> means.</p>
+</section>
+
+<section>
+  <h2 data-short="Nested and recursive">Nested functions and recursion</h2>
+  <p>You can define a function inside another function. Unlike in JavaScript, an inner <code>fn</code> cannot see the outer function's variables. Use a closure when you need that.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+function report(items) {
+  const prefix = "-";
+  function line(item) {
+    return `${prefix} ${item}`;  // sees `prefix`
+  }
+  return items.map(line).join("\n");
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+fn report(items: &[&str]) -> String {
+    let prefix = "-";
+    // fn line(item: &str) -> String { format!("{prefix} {item}") }
+    // error[E0434]: can't capture dynamic environment in a fn item
+
+    let line = |item: &&str| format!("{prefix} {item}");  // a closure can
+    items.iter().map(line).collect::<Vec<_>>().join("\n")
+}
+</script>
+  </div>
+  <p>Recursion works as you expect. Rust does not promise tail call optimization, so very deep recursion can overflow the stack, the same as in JavaScript. A loop is the safe choice for large inputs.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+function factorial(n: number): number {
+  return n <= 1 ? 1 : n * factorial(n - 1);
+}
+
+factorial(10);  // 3628800
+</script>
+<script type="text/x-code" data-lang="rust">
+fn factorial(n: u64) -> u64 {
+    if n <= 1 { 1 } else { n * factorial(n - 1) }
+}
+
+factorial(10);  // 3628800
+</script>
+  </div>
+</section>
+
+<section>
+  <h2 data-short="Preview">Coming later: generics and methods</h2>
+  <p>Two more function features get their own lessons. Here is a first look so they do not surprise you.</p>
+  <h3>Generic functions</h3>
+  <p>Generics look like TypeScript generics. The difference is the <code>T: PartialOrd + Copy</code> part, which says what <code>T</code> must be able to do. Here, "can be compared with <code>&gt;</code>" and "can be copied". Those requirements are called trait bounds. See <a href="traits.html">lesson 11</a>.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+function largest<T>(items: T[]): T {
+  let max = items[0];
+  for (const item of items) {
+    if (item > max) max = item;
+  }
+  return max;
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+fn largest<T: PartialOrd + Copy>(items: &[T]) -> T {
+    let mut max = items[0];
+    for &item in items {
+        if item > max { max = item; }
+    }
+    max
+}
+</script>
+  </div>
+  <h3>Methods</h3>
+  <p>Methods are functions inside an <code>impl</code> block. The first parameter, <code>&amp;self</code>, is Rust's <code>this</code>, written out on purpose. See <a href="objects.html">lesson 8</a>.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+class Circle {
+  constructor(public radius: number) {}
+  area() {
+    return Math.PI * this.radius ** 2;
+  }
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+struct Circle { radius: f64 }
+
+impl Circle {
+    fn area(&self) -> f64 {
+        std::f64::consts::PI * self.radius.powi(2)
+    }
+}
+</script>
+  </div>
+</section>
+
+<section>
+  <h2>Check yourself</h2>
+  <div class="quiz">
+    <details>
+      <summary>Why does this fail? <code>fn double(n: i32) -&gt; i32 { n * 2; }</code></summary>
+      <div><p>The semicolon turns <code>n * 2</code> into a statement, so the body has no final value and returns <code>()</code>. Remove the semicolon: <code>{ n * 2 }</code>.</p></div>
+    </details>
+    <details>
+      <summary>How do you write <code>(a, b) =&gt; a * b</code> as a Rust closure?</summary>
+      <div><p><code>|a, b| a * b</code>. Add types if Rust cannot infer them: <code>|a: i32, b: i32| a * b</code>.</p></div>
+    </details>
+    <details>
+      <summary>Rust has no default parameters. Name two ways to replace them.</summary>
+      <div><p>An <code>Option</code> parameter with <code>unwrap_or(default)</code>, a second function with a clear name, or an options struct that implements <code>Default</code>.</p></div>
+    </details>
+    <details>
+      <summary>A function takes a callback that pushes items into a captured <code>Vec</code>. Which type do you write for the parameter?</summary>
+      <div><p><code>impl FnMut()</code>. Pushing changes the captured vector, so the closure is <code>FnMut</code>, not <code>Fn</code>.</p></div>
+    </details>
+    <details>
+      <summary>When do you need <code>move</code> before a closure?</summary>
+      <div><p>When the closure must outlive the scope it was made in, like closures sent to a thread or returned from a function. <code>move</code> makes the closure own the captured values instead of borrowing them.</p></div>
+    </details>
+  </div>
+</section>
+
+</main>
+<script src="assets/app.js"></script>
+</body>
+</html>

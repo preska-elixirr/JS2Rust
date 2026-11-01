@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conditions and loops · Rust from JS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<script>try{var t=localStorage.getItem('rjs-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body data-page="control-flow.html">
+<main class="lesson">
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 04 · Core syntax</p>
+  <h1>Conditions and loops</h1>
+  <p class="lead">Rust has <code>if</code>, <code>for</code> and <code>while</code> like JavaScript, plus two new tools: <code>match</code>, a much stronger <code>switch</code>, and <code>loop</code>, which can hand back a value. Most control flow in Rust also produces a value, so the ternary operator is gone.</p>
+</header>
+
+<div class="learn">
+  <p>You will learn</p>
+  <ul>
+    <li>How <code>if</code> differs: no parentheses, required braces, no truthy values</li>
+    <li>How <code>if</code> and <code>match</code> return values, replacing <code>? :</code></li>
+    <li>How <code>match</code> replaces <code>switch</code>, and why it never forgets a case</li>
+    <li>The Rust versions of <code>for...of</code>, the classic <code>for (let i...)</code>, <code>while</code> and <code>do...while</code></li>
+    <li>Ranges, labeled loops, and a first look at <code>if let</code> and <code>while let</code></li>
+  </ul>
+</div>
+
+<section>
+  <h2 data-short="if and else">if and else</h2>
+  <p>The shape is the same as JavaScript, with two syntax changes. You drop the parentheses around the condition. You must always write curly braces, even for one line.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const temp = 23;
+
+if (temp > 30) {
+  console.log("hot");
+} else if (temp > 15) {
+  console.log("nice");
+} else {
+  console.log("cold");
+}
+
+if (temp < 0) console.log("freezing"); // braces optional
+</script>
+<script type="text/x-code" data-lang="rust">
+let temp = 23;
+
+if temp > 30 {
+    println!("hot");
+} else if temp > 15 {
+    println!("nice");
+} else {
+    println!("cold");
+}
+
+if temp < 0 { println!("freezing"); }  // braces required
+</script>
+  </div>
+  <p>Parentheses around the condition still compile, but the compiler warns: "unnecessary parentheses around `if` condition". <code>cargo fmt</code> and Clippy push you toward the bare style.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Operator</th><th>JavaScript</th><th>Rust</th></tr></thead>
+      <tbody>
+        <tr><td>Equal</td><td><code>===</code> (and the loose <code>==</code>)</td><td><code>==</code> only, always strict</td></tr>
+        <tr><td>Not equal</td><td><code>!==</code></td><td><code>!=</code></td></tr>
+        <tr><td>And, or, not</td><td><code>&amp;&amp;</code> <code>||</code> <code>!</code></td><td><code>&amp;&amp;</code> <code>||</code> <code>!</code> (same)</td></tr>
+        <tr><td>Compare</td><td><code>&lt;</code> <code>&lt;=</code> <code>&gt;</code> <code>&gt;=</code></td><td>same</td></tr>
+        <tr><td>Nullish default</td><td><code>a ?? b</code></td><td><code>a.unwrap_or(b)</code> on an <code>Option</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p>Rust's <code>==</code> compares strings by content and works on any type that supports comparison, including your own structs once you add <code>#[derive(PartialEq)]</code>. There is no loose equality, so <code>"1" == 1</code> is a compile error instead of <code>true</code>.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="No truthy values">No truthy or falsy values</h2>
+  <p>JavaScript treats <code>0</code>, <code>""</code>, <code>null</code>, <code>undefined</code> and <code>NaN</code> as false in a condition. Rust does not. The condition must be a <code>bool</code>, and you write the test you mean.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const count = 0;
+if (count) {
+  console.log("some");
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+let count = 0;
+if count {   // does not compile
+    println!("some");
+}
+</script>
+  </div>
+<script type="text/x-code" data-lang="output" data-title="Compiler error">
+error[E0308]: mismatched types
+ --> src/main.rs:3:4
+  |
+3 | if count {
+  |    ^^^^^ expected `bool`, found integer
+</script>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>JavaScript check</th><th>Rust check</th></tr></thead>
+      <tbody>
+        <tr><td><code>if (count)</code></td><td><code>if count != 0</code></td></tr>
+        <tr><td><code>if (name)</code> for a string</td><td><code>if !name.is_empty()</code></td></tr>
+        <tr><td><code>if (items.length)</code></td><td><code>if !items.is_empty()</code></td></tr>
+        <tr><td><code>if (user)</code> for something that may be missing</td><td><code>if user.is_some()</code>, or better, <code>if let Some(user) = user</code></td></tr>
+        <tr><td><code>if (!user)</code></td><td><code>if user.is_none()</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>This removes a whole family of bugs, like the classic <code>if (price)</code> that treats a real price of <code>0</code> as "no price".</p>
+</section>
+
+<section>
+  <h2 data-short="if returns a value">if is an expression, so no ternary</h2>
+  <p>Rust has no <code>condition ? a : b</code> operator. It does not need one. An <code>if</code> block produces a value, the same way a function body does (you saw this rule in <a href="functions.html">lesson 3</a>). The last expression of the branch that runs becomes the value.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const age = 20;
+const label = age >= 18 ? "adult" : "minor";
+
+const fee = isMember ? 0 : total > 100 ? 5 : 10;
+</script>
+<script type="text/x-code" data-lang="rust">
+let age = 20;
+let label = if age >= 18 { "adult" } else { "minor" };
+
+let fee = if is_member { 0 } else if total > 100 { 5 } else { 10 };
+</script>
+  </div>
+  <p>Nested ternaries are hard to read in JavaScript. The Rust version reads like normal code, and it scales to branches with several lines:</p>
+<script type="text/x-code" data-lang="rust">
+let shipping = if weight_kg > 20.0 {
+    let base = 15.0;
+    base + (weight_kg - 20.0) * 0.5
+} else {
+    5.0
+};
+</script>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p>Both branches must give the same type. <code>if ok { 1 } else { "no" }</code> fails with error E0308, "`if` and `else` have incompatible types". Also, an <code>if</code> used as a value needs an <code>else</code>, because the value must exist in every case.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="match vs switch">match instead of switch</h2>
+  <p><code>match</code> compares a value against a list of patterns and runs the first arm that fits. It does the job of <code>switch</code>, with none of the sharp edges.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+switch (status) {
+  case 200:
+    console.log("OK");
+    break;
+  case 301:
+  case 302:
+    console.log("Redirect");
+    break;
+  case 404:
+    console.log("Not found");
+    break;
+  default:
+    console.log("Something else");
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+match status {
+    200 => println!("OK"),
+    301 | 302 => println!("Redirect"),
+    404 => println!("Not found"),
+    _ => println!("Something else"),
+}
+</script>
+  </div>
+  <ul>
+    <li>Each arm is <code>pattern =&gt; expression</code>, separated by commas.</li>
+    <li>There is no fallthrough and no <code>break</code>. Only one arm runs.</li>
+    <li><code>|</code> means "or". It replaces stacked <code>case</code> lines.</li>
+    <li><code>_</code> matches anything. It plays the role of <code>default</code>.</li>
+    <li>An arm with several lines uses braces: <code>404 =&gt; { log(); retry(); }</code>.</li>
+  </ul>
+
+  <h3>match gives back a value</h3>
+  <p>Like <code>if</code>, a <code>match</code> is an expression. This replaces the common JavaScript pattern of declaring a <code>let</code> and assigning it in every case, or building a lookup object.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+let message: string;
+switch (status) {
+  case 200: message = "OK"; break;
+  case 404: message = "Not found"; break;
+  default: message = "Unknown";
+}
+
+// or a lookup object
+const messages: Record<number, string> = { 200: "OK", 404: "Not found" };
+const msg = messages[status] ?? "Unknown";
+</script>
+<script type="text/x-code" data-lang="rust">
+let message = match status {
+    200 => "OK",
+    404 => "Not found",
+    _ => "Unknown",
+};
+</script>
+  </div>
+
+  <h3>Matching strings</h3>
+  <p>You can match on text too. If you hold a <code>String</code>, call <code>.as_str()</code> so the arms can be plain string literals.</p>
+<script type="text/x-code" data-lang="rust">
+let command = String::from("stop");
+
+match command.as_str() {
+    "start" | "run" => println!("Starting"),
+    "stop" => println!("Stopping"),
+    other => println!("Unknown command: {other}"),
+}
+</script>
+  <p>The last arm shows a new trick. A plain name like <code>other</code> matches anything, like <code>_</code>, and also gives you the value under that name.</p>
+</section>
+
+<section>
+  <h2 data-short="Patterns">More patterns: ranges, guards and tuples</h2>
+  <p><code>match</code> patterns can do much more than compare against one value. These are the ones you will use most.</p>
+<script type="text/x-code" data-lang="rust">
+let score = 87;
+
+let grade = match score {
+    90..=100 => 'A',            // inclusive range
+    80..=89 => 'B',
+    70..=79 => 'C',
+    0..=69 => 'F',
+    _ => '?',                   // anything else, like 120 or -5
+};
+
+let n = -4;
+let kind = match n {
+    0 => "zero",
+    x if x < 0 => "negative",   // a guard: extra `if` condition
+    x if x % 2 == 0 => "even",
+    _ => "odd",
+};
+
+let age = 42;
+match age {
+    // `@` binds the value to a name and checks the pattern at once
+    a @ 13..=19 => println!("teen, {a}"),
+    a => println!("not a teen, {a}"),
+}
+</script>
+  <p>Matching on a tuple lets you check two values at the same time. Here is FizzBuzz, which needs no <code>if</code> chain at all:</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+for (let i = 1; i <= 15; i++) {
+  if (i % 15 === 0) console.log("FizzBuzz");
+  else if (i % 3 === 0) console.log("Fizz");
+  else if (i % 5 === 0) console.log("Buzz");
+  else console.log(i);
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+for i in 1..=15 {
+    match (i % 3, i % 5) {
+        (0, 0) => println!("FizzBuzz"),
+        (0, _) => println!("Fizz"),
+        (_, 0) => println!("Buzz"),
+        _ => println!("{i}"),
+    }
+}
+</script>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Pattern</th><th>Matches</th></tr></thead>
+      <tbody>
+        <tr><td><code>5</code></td><td>exactly 5</td></tr>
+        <tr><td><code>1 | 2 | 3</code></td><td>any of these</td></tr>
+        <tr><td><code>1..=5</code></td><td>1 to 5, including 5</td></tr>
+        <tr><td><code>'a'..='z'</code></td><td>any lowercase letter (ranges work on <code>char</code>)</td></tr>
+        <tr><td><code>x if x &gt; 10</code></td><td>anything, then the guard must be true</td></tr>
+        <tr><td><code>n @ 1..=9</code></td><td>1 to 9, and names the value <code>n</code></td></tr>
+        <tr><td><code>(0, _)</code></td><td>a pair whose first item is 0</td></tr>
+        <tr><td><code>name</code></td><td>anything, and names it</td></tr>
+        <tr><td><code>_</code></td><td>anything, and ignores it</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2 data-short="Exhaustive">match never forgets a case</h2>
+  <p>A <code>switch</code> without a <code>default</code> silently does nothing for values you did not list. A <code>match</code> must cover every possible value. If it does not, the program does not compile, and the error tells you which values are missing.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="rust" data-title="Missing cases">
+let n: i32 = 7;
+let size = match n {
+    1 | 2 | 3 => "small",
+};
+</script>
+<script type="text/x-code" data-lang="output" data-title="Compiler error">
+error[E0004]: non-exhaustive patterns: `i32::MIN..=0_i32` and `4_i32..=i32::MAX` not covered
+ --> src/main.rs:2:18
+  |
+2 | let size = match n {
+  |                  ^ patterns `i32::MIN..=0_i32` and `4_i32..=i32::MAX` not covered
+</script>
+  </div>
+  <p>With numbers you usually just add a <code>_</code> arm. The real power appears with enums in <a href="enums.html">lesson 9</a>. When you add a new variant to an enum, every <code>match</code> that forgot it becomes a compile error. The compiler gives you a to-do list of every place to update.</p>
+  <aside class="callout note">
+    <p class="callout-title">Mental model</p>
+    <p>TypeScript fans sometimes write <code>const _exhaustive: never = value</code> in a <code>default</code> case to force this check. Rust does it for every <code>match</code>, with no tricks.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="for loops">Looping over a collection</h2>
+  <p><code>for...of</code> becomes <code>for ... in</code>. Careful: JavaScript's <code>for...in</code> loops over keys, but Rust's <code>for ... in</code> loops over values. Rust has only this one kind of <code>for</code> loop.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const fruits = ["apple", "pear", "plum"];
+
+for (const fruit of fruits) {
+  console.log(fruit);
+}
+
+fruits.forEach((fruit) => console.log(fruit));
+</script>
+<script type="text/x-code" data-lang="rust">
+let fruits = vec!["apple", "pear", "plum"];
+
+for fruit in &fruits {
+    println!("{fruit}");
+}
+
+fruits.iter().for_each(|fruit| println!("{fruit}"));
+</script>
+  </div>
+  <p>The <code>&amp;</code> in <code>&amp;fruits</code> matters. It means "loop over the items by borrowing them". Without it, the loop takes ownership of the whole vector and you cannot use <code>fruits</code> after the loop. <a href="ownership.html">Lesson 5</a> explains why.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>You write</th><th>Each item is</th><th>The vector after the loop</th></tr></thead>
+      <tbody>
+        <tr><td><code>for x in &amp;v</code></td><td>a read-only reference</td><td>still usable. Pick this by default.</td></tr>
+        <tr><td><code>for x in &amp;mut v</code></td><td>a reference you can change through</td><td>still usable, with changed items</td></tr>
+        <tr><td><code>for x in v</code></td><td>the item itself, moved out</td><td>gone. Use when you are done with it.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const scores = [70, 85, 90];
+for (let i = 0; i < scores.length; i++) {
+  scores[i] += 5;
+}
+// [75, 90, 95]
+</script>
+<script type="text/x-code" data-lang="rust">
+let mut scores = vec![70, 85, 90];
+for score in &mut scores {
+    *score += 5;   // * means "the value behind the reference"
+}
+// [75, 90, 95]
+</script>
+  </div>
+</section>
+
+<section>
+  <h2 data-short="Counting loops">Counting loops and ranges</h2>
+  <p>Rust has no C-style <code>for (let i = 0; i &lt; n; i++)</code>. You loop over a range instead. <code>0..5</code> counts 0, 1, 2, 3, 4. The end is excluded, just like <code>i &lt; 5</code>. Add <code>=</code> to include the end.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+for (let i = 0; i < 5; i++) {
+  console.log(i);        // 0 1 2 3 4
+}
+
+for (let i = 1; i <= 5; i++) {
+  console.log(i);        // 1 2 3 4 5
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+for i in 0..5 {
+    println!("{i}");     // 0 1 2 3 4
+}
+
+for i in 1..=5 {
+    println!("{i}");     // 1 2 3 4 5
+}
+</script>
+  </div>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+for (let i = 10; i > 0; i--) {
+  console.log(i);        // 10 9 8 ... 1
+}
+
+for (let i = 0; i < 10; i += 2) {
+  console.log(i);        // 0 2 4 6 8
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+for i in (1..=10).rev() {
+    println!("{i}");     // 10 9 8 ... 1
+}
+
+for i in (0..10).step_by(2) {
+    println!("{i}");     // 0 2 4 6 8
+}
+</script>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Range</th><th>Gives</th><th>JS loop header</th></tr></thead>
+      <tbody>
+        <tr><td><code>0..5</code></td><td>0, 1, 2, 3, 4</td><td><code>i = 0; i &lt; 5; i++</code></td></tr>
+        <tr><td><code>0..=5</code></td><td>0, 1, 2, 3, 4, 5</td><td><code>i = 0; i &lt;= 5; i++</code></td></tr>
+        <tr><td><code>(0..5).rev()</code></td><td>4, 3, 2, 1, 0</td><td><code>i = 4; i &gt;= 0; i--</code></td></tr>
+        <tr><td><code>(0..10).step_by(3)</code></td><td>0, 3, 6, 9</td><td><code>i = 0; i &lt; 10; i += 3</code></td></tr>
+        <tr><td><code>0..v.len()</code></td><td>every index of <code>v</code></td><td><code>i = 0; i &lt; v.length; i++</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p><code>(5..0)</code> is an empty range, not a countdown. It produces nothing. To count down, build the range upward and call <code>.rev()</code>.</p>
+  </aside>
+  <p>Ranges are values, not just loop syntax. You can store one (<code>let r = 1..10;</code>), check it (<code>(1..10).contains(&amp;x)</code>), or use it to slice a list: <code>&amp;v[1..3]</code>.</p>
+</section>
+
+<section>
+  <h2 data-short="Index and value">Getting the index and the value</h2>
+  <p>When you need the position too, JavaScript gives you <code>forEach((item, i) =&gt; ...)</code> or <code>entries()</code>. Rust has <code>enumerate()</code>. Note the order: the index comes first.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const names = ["Ana", "Bo", "Cy"];
+
+names.forEach((name, i) => {
+  console.log(`${i}: ${name}`);
+});
+
+for (const [i, name] of names.entries()) {
+  console.log(`${i}: ${name}`);
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+let names = vec!["Ana", "Bo", "Cy"];
+
+for (i, name) in names.iter().enumerate() {
+    println!("{i}: {name}");
+}
+</script>
+  </div>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p>Prefer <code>for x in &amp;v</code> or <code>enumerate()</code> over <code>for i in 0..v.len()</code> with <code>v[i]</code>. It is shorter, and Rust can skip the bounds check on each access, so it is often faster too.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="while">while, and do-while with loop</h2>
+  <p><code>while</code> is the same as in JavaScript, minus the parentheses.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+let fuel = 3;
+while (fuel > 0) {
+  console.log(`fuel: ${fuel}`);
+  fuel--;
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+let mut fuel = 3;
+while fuel > 0 {
+    println!("fuel: {fuel}");
+    fuel -= 1;   // no ++ or -- in Rust
+}
+</script>
+  </div>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p>Rust has no <code>++</code> or <code>--</code> operators. Write <code>i += 1</code> and <code>i -= 1</code>.</p>
+  </aside>
+  <p>There is no <code>do...while</code>. Use <code>loop</code>, which repeats forever until you <code>break</code>, and put the check at the end.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+let attempt = 0;
+do {
+  attempt++;
+  console.log(`attempt ${attempt}`);
+} while (attempt < 3);
+</script>
+<script type="text/x-code" data-lang="rust">
+let mut attempt = 0;
+loop {
+    attempt += 1;
+    println!("attempt {attempt}");
+    if attempt >= 3 { break; }
+}
+</script>
+  </div>
+  <p>Use <code>loop</code> instead of <code>while true</code>. The compiler understands that <code>loop</code> runs at least once and only exits through <code>break</code>, which helps it check your code. Clippy even warns about <code>while true</code>.</p>
+</section>
+
+<section>
+  <h2 data-short="break with a value">loop can return a value</h2>
+  <p>This one has no JavaScript match. <code>break</code> inside a <code>loop</code> can carry a value, and that value becomes the result of the whole loop. It is handy for retry logic and searches.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+let tries = 0;
+let result;
+while (true) {
+  tries++;
+  if (tries * tries > 50) {
+    result = tries;
+    break;
+  }
+}
+console.log(result);   // 8
+</script>
+<script type="text/x-code" data-lang="rust">
+let mut tries = 0;
+let result = loop {
+    tries += 1;
+    if tries * tries > 50 {
+        break tries;   // the loop's value
+    }
+};
+println!("{result}");  // 8
+</script>
+  </div>
+  <p>In Rust, <code>result</code> does not need to be <code>mut</code> or start empty. It gets its one value from the loop. Only <code>loop</code> supports this. <code>for</code> and <code>while</code> always produce <code>()</code>, because they might run zero times.</p>
+</section>
+
+<section>
+  <h2 data-short="Labels and continue">Labeled loops and continue</h2>
+  <p><code>continue</code> skips to the next round, as in JavaScript. To break out of an outer loop from an inner one, both languages use labels. In Rust a label starts with a single quote.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+outer: for (let row = 0; row < 5; row++) {
+  for (let col = 0; col < 5; col++) {
+    if (col > row) continue outer;
+    if (row * col === 6) {
+      console.log(`found ${row}, ${col}`);
+      break outer;
+    }
+  }
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+'outer: for row in 0..5 {
+    for col in 0..5 {
+        if col > row { continue 'outer; }
+        if row * col == 6 {
+            println!("found {row}, {col}");
+            break 'outer;
+        }
+    }
+}
+</script>
+  </div>
+  <p>You can combine labels with values: <code>break 'outer value;</code> works when the outer loop is a <code>loop</code>.</p>
+</section>
+
+<section>
+  <h2 data-short="if let and while let">Preview: if let and while let</h2>
+  <p>Sometimes you care about one pattern only, and a full <code>match</code> with a <code>_ =&gt; {}</code> arm feels heavy. <code>if let</code> runs a block only when the value fits the pattern, and pulls the data out at the same time. You will use it most with <code>Option</code>, Rust's replacement for values that may be <code>null</code>. See <a href="errors.html">lesson 10</a>.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const nickname: string | null = getNickname();
+
+if (nickname !== null) {
+  console.log(`Hi, ${nickname}`);
+} else {
+  console.log("Hi, stranger");
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+let nickname: Option<&str> = get_nickname();
+
+if let Some(name) = nickname {
+    println!("Hi, {name}");
+} else {
+    println!("Hi, stranger");
+}
+</script>
+  </div>
+  <p><code>while let</code> keeps looping as long as the pattern fits. A common use is draining a stack: <code>pop()</code> returns <code>Some(item)</code> until the vector is empty, then <code>None</code>, which ends the loop.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const stack = [1, 2, 3];
+while (stack.length > 0) {
+  const top = stack.pop();
+  console.log(top);   // 3, 2, 1
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+let mut stack = vec![1, 2, 3];
+while let Some(top) = stack.pop() {
+    println!("{top}");  // 3, 2, 1
+}
+</script>
+  </div>
+</section>
+
+<section>
+  <h2>Check yourself</h2>
+  <div class="quiz">
+    <details>
+      <summary>How do you write <code>const x = ok ? "yes" : "no"</code> in Rust?</summary>
+      <div><p><code>let x = if ok { "yes" } else { "no" };</code>. <code>if</code> is an expression, so it replaces the ternary.</p></div>
+    </details>
+    <details>
+      <summary>Does <code>if items.len() { ... }</code> compile?</summary>
+      <div><p>No. The condition must be a <code>bool</code>, and Rust has no truthy values. Write <code>if !items.is_empty()</code> or <code>if items.len() &gt; 0</code>.</p></div>
+    </details>
+    <details>
+      <summary>What numbers does <code>for i in 2..5</code> print?</summary>
+      <div><p>2, 3 and 4. The end of <code>..</code> is excluded. Use <code>2..=5</code> to include 5.</p></div>
+    </details>
+    <details>
+      <summary>Your <code>match</code> on a number fails with "non-exhaustive patterns". What is the usual fix?</summary>
+      <div><p>Add a catch-all arm, <code>_ =&gt; ...</code>, or a named one like <code>other =&gt; ...</code>. A <code>match</code> must handle every possible value.</p></div>
+    </details>
+    <details>
+      <summary>How do you loop over a vector and still use it after the loop?</summary>
+      <div><p>Loop over a reference: <code>for x in &amp;v</code>. <code>for x in v</code> moves the vector into the loop, and it is gone afterwards.</p></div>
+    </details>
+    <details>
+      <summary>Which loop can give back a value with <code>break</code>?</summary>
+      <div><p>Only <code>loop</code>. Write <code>let found = loop { ... break value; };</code>.</p></div>
+    </details>
+  </div>
+</section>
+
+</main>
+<script src="assets/app.js"></script>
+</body>
+</html>

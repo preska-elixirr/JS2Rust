@@ -1,0 +1,709 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Traits and generics · Rust from JS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<script>try{var t=localStorage.getItem('rjs-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body data-page="traits.html">
+<main class="lesson">
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 11 · Real programs</p>
+  <h1>Traits and generics</h1>
+  <p class="lead">A trait is Rust's version of an interface. Generics look almost the same as in TypeScript. The big change is that a type only fits a trait when you say so out loud.</p>
+</header>
+
+<div class="learn">
+  <p>You will learn</p>
+  <ul>
+    <li>How to turn a TypeScript <code>interface</code> into a <code>trait</code> and an <code>impl</code> block</li>
+    <li>Why Rust does not accept "it has the right shape" the way TypeScript does</li>
+    <li>Three ways to take a trait as a parameter, and when to use <code>dyn</code></li>
+    <li>Generic functions and structs, and how <code>T extends X</code> becomes <code>T: X</code></li>
+    <li>The standard traits you meet every day: <code>Debug</code>, <code>Display</code>, <code>Clone</code>, <code>PartialEq</code> and more</li>
+  </ul>
+</div>
+
+<section>
+  <h2 data-short="Interface to trait">Interfaces become traits</h2>
+  <p>In TypeScript, an interface lists the methods an object must have. A class then says <code>implements</code>. Rust splits this into three parts: the <code>trait</code> lists the methods, the <code>struct</code> holds the data, and an <code>impl Trait for Type</code> block connects them.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+interface Shape {
+  area(): number;
+  name(): string;
+}
+
+class Circle implements Shape {
+  constructor(public radius: number) {}
+
+  area() {
+    return Math.PI * this.radius ** 2;
+  }
+
+  name() {
+    return "circle";
+  }
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+trait Shape {
+    fn area(&self) -> f64;
+    fn name(&self) -> String;
+}
+
+struct Circle {
+    radius: f64,
+}
+
+impl Shape for Circle {
+    fn area(&self) -> f64 {
+        std::f64::consts::PI * self.radius * self.radius
+    }
+
+    fn name(&self) -> String {
+        String::from("circle")
+    }
+}
+</script>
+  </div>
+  <p>The trait only has signatures that end in <code>;</code>. The bodies live in the <code>impl</code> block. <code>&amp;self</code> plays the role of <code>this</code>. You saw it in <a href="objects.html">lesson 8</a>.</p>
+  <p>One struct can implement many traits, each in its own <code>impl</code> block. That keeps related methods together and makes each trait easy to find.</p>
+<script type="text/x-code" data-lang="rust">
+struct Square {
+    side: f64,
+}
+
+impl Shape for Square {
+    fn area(&self) -> f64 {
+        self.side * self.side
+    }
+
+    fn name(&self) -> String {
+        String::from("square")
+    }
+}
+
+fn main() {
+    let c = Circle { radius: 1.0 };
+    let s = Square { side: 2.0 };
+    println!("{} has area {:.2}", c.name(), c.area()); // circle has area 3.14
+    println!("{} has area {:.2}", s.name(), s.area()); // square has area 4.00
+}
+</script>
+</section>
+
+<section>
+  <h2 data-short="Shape vs name">Shape is not enough: nominal typing</h2>
+  <p>TypeScript uses structural typing. If an object has the right properties, it fits the interface, even if nobody ever mentioned the interface. Rust uses nominal typing. A type fits a trait only when an <code>impl</code> block says so. Having a method with the right name does not count.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+interface Named {
+  name(): string;
+}
+
+function greet(x: Named) {
+  console.log(`Hello, ${x.name()}`);
+}
+
+const dog = { name: () => "Rex", legs: 4 };
+greet(dog); // fine: dog has a name() method
+</script>
+<script type="text/x-code" data-lang="rust">
+trait Named {
+    fn name(&self) -> String;
+}
+
+fn greet(x: &impl Named) {
+    println!("Hello, {}", x.name());
+}
+
+struct Dog { name: String }
+
+let dog = Dog { name: String::from("Rex") };
+greet(&dog);
+// error[E0277]: the trait bound `Dog: Named` is not satisfied
+</script>
+  </div>
+  <p>The fix is one small block. After it, <code>greet(&amp;dog)</code> compiles.</p>
+<script type="text/x-code" data-lang="rust">
+impl Named for Dog {
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+}
+</script>
+  <aside class="callout note">
+    <p class="callout-title">Mental model</p>
+    <p>In TypeScript, an interface is a description that many shapes happen to match. In Rust, a trait is a promise, and the <code>impl</code> block is you signing it. The compiler never guesses that two things are related.</p>
+  </aside>
+  <p>A nice side effect: you can implement your own traits for types you did not write, even built-in ones like <code>i32</code> or <code>String</code>. That is like adding a method to <code>Number.prototype</code>, but safe, because the method only exists where the trait is imported.</p>
+<script type="text/x-code" data-lang="rust">
+impl Named for i32 {
+    fn name(&self) -> String {
+        format!("number {self}")
+    }
+}
+
+greet(&7); // Hello, number 7
+</script>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p>There is one limit, called the orphan rule. You cannot implement a trait from another crate for a type from another crate. For example, you cannot write <code>impl Display for Vec&lt;i32&gt;</code>, because both come from the standard library. Either the trait or the type must be yours.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Default methods</h2>
+  <p>A trait can give a method a body. Every type that implements the trait gets that method for free and can still replace it. In TypeScript you would reach for an abstract class to get the same effect.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+abstract class Greeter {
+  abstract name(): string;
+
+  greet() {
+    return `Hello, ${this.name()}!`;
+  }
+}
+
+class English extends Greeter {
+  name() { return "Ana"; }
+}
+
+new English().greet(); // "Hello, Ana!"
+</script>
+<script type="text/x-code" data-lang="rust">
+trait Greeter {
+    fn name(&self) -> String;
+
+    fn greet(&self) -> String {
+        format!("Hello, {}!", self.name())
+    }
+}
+
+struct English;
+
+impl Greeter for English {
+    fn name(&self) -> String { String::from("Ana") }
+}
+
+English.greet(); // "Hello, Ana!"
+</script>
+  </div>
+  <p>To override the default, write <code>fn greet(&amp;self)</code> inside the <code>impl</code> block with your own body. Unlike a class, a type can pick up default methods from many traits at once. Rust has no class inheritance, so traits are how you share behavior.</p>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p><code>struct English;</code> is a struct with no fields. Its only value is <code>English</code> itself. It is handy when you need a type to hang trait methods on and have no data to store.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Traits as parameters</h2>
+  <p>You want a function that takes "anything that is a <code>Shape</code>". TypeScript has one way to write that. Rust has three, and they mean almost the same thing.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+function printArea(shape: Shape) {
+  console.log(shape.area());
+}
+
+function printArea2<T extends Shape>(shape: T) {
+  console.log(shape.area());
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+// 1. impl Trait: short and readable
+fn print_area(shape: &impl Shape) {
+    println!("{}", shape.area());
+}
+
+// 2. A generic with a trait bound
+fn print_area2<T: Shape>(shape: &T) {
+    println!("{}", shape.area());
+}
+</script>
+  </div>
+  <p>Forms 1 and 2 compile to the same code. Use <code>impl Shape</code> when the function is simple. Use the generic form when two parameters must be the same type, or when you need to name the type again.</p>
+<script type="text/x-code" data-lang="rust">
+// Both arguments must be the SAME shape type.
+fn bigger<T: Shape>(a: T, b: T) -> T {
+    if a.area() > b.area() { a } else { b }
+}
+
+// With impl Trait, a and b may be different types.
+fn total_area(a: &impl Shape, b: &impl Shape) -> f64 {
+    a.area() + b.area()
+}
+</script>
+
+  <h3>Where clauses for long bounds</h3>
+  <p>When the bounds get long, the third form moves them after the signature with <code>where</code>. It changes nothing except readability.</p>
+<script type="text/x-code" data-lang="rust">
+use std::fmt::Debug;
+
+// 3. A where clause: same as form 2, easier to read
+fn describe<T, U>(a: &T, b: &U) -> String
+where
+    T: Shape + Debug,
+    U: Shape,
+{
+    format!("{:?} has area {}, the other has {}", a, a.area(), b.area())
+}
+</script>
+  <p><code>T: Shape + Debug</code> means T must implement both traits. It is the Rust spelling of TypeScript's <code>T extends Shape &amp; Debug</code>.</p>
+</section>
+
+<section>
+  <h2>Returning impl Trait</h2>
+  <p>A function can also promise "I return some type that implements this trait" without naming the type. This is how you return closures and iterators, whose real type names are long or impossible to write.</p>
+<script type="text/x-code" data-lang="rust">
+fn make_shape() -> impl Shape {
+    Circle { radius: 1.0 }
+}
+
+fn make_adder(n: i32) -> impl Fn(i32) -> i32 {
+    move |x| x + n
+}
+
+fn evens(limit: u32) -> impl Iterator<Item = u32> {
+    (0..limit).filter(|n| n % 2 == 0)
+}
+
+let add5 = make_adder(5);
+println!("{}", add5(10));                    // 15
+println!("{:?}", evens(10).collect::<Vec<_>>()); // [0, 2, 4, 6, 8]
+</script>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p><code>-&gt; impl Shape</code> still means one single concrete type. The caller just does not get to see which one. You cannot return a <code>Circle</code> in one branch and a <code>Square</code> in the other. The compiler stops you with <code>error[E0308]: `if` and `else` have incompatible types</code>. The next section shows the fix.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="dyn Trait">Mixed lists with dyn Trait</h2>
+  <p>In TypeScript, an array of <code>Shape</code> can hold circles and squares side by side. Rust can do this too, but you ask for it with <code>dyn</code> (short for dynamic). Each item goes in a <code>Box</code>, which stores the value on the heap and keeps only a pointer in the list.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const shapes: Shape[] = [
+  new Circle(1),
+  new Square(2),
+];
+
+const total = shapes.reduce(
+  (sum, s) => sum + s.area(),
+  0,
+);
+</script>
+<script type="text/x-code" data-lang="rust">
+let shapes: Vec<Box<dyn Shape>> = vec![
+    Box::new(Circle { radius: 1.0 }),
+    Box::new(Square { side: 2.0 }),
+];
+
+let total: f64 = shapes
+    .iter()
+    .map(|s| s.area())
+    .sum();
+</script>
+  </div>
+  <p>Why the <code>Box</code>? A <code>Vec</code> needs every item to have the same size. A <code>Circle</code> and a <code>Square</code> have different sizes, but a pointer to either one is always the same size. JavaScript does this for you behind the scenes, because every object lives on the heap.</p>
+  <p>The same trick works for one shape and for return values:</p>
+<script type="text/x-code" data-lang="rust">
+// A borrowed trait object: no Box needed for parameters
+fn print_it(shape: &dyn Shape) {
+    println!("{}: {}", shape.name(), shape.area());
+}
+
+// Returning different types from different branches
+fn make(round: bool) -> Box<dyn Shape> {
+    if round {
+        Box::new(Circle { radius: 1.0 })
+    } else {
+        Box::new(Square { side: 1.0 })
+    }
+}
+</script>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>You write</th><th>What it means</th><th>Use it when</th></tr></thead>
+      <tbody>
+        <tr><td><code>&amp;impl Shape</code> or <code>&amp;T</code></td><td>one exact type, chosen at compile time</td><td>The default. Most functions.</td></tr>
+        <tr><td><code>&amp;dyn Shape</code></td><td>any shape, looked up at runtime</td><td>You want one compiled function for all types.</td></tr>
+        <tr><td><code>Box&lt;dyn Shape&gt;</code></td><td>an owned shape of any type</td><td>Mixed lists, or returning different types.</td></tr>
+        <tr><td><code>-&gt; impl Shape</code></td><td>one hidden type</td><td>Returning closures and iterators.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>Generic functions and structs</h2>
+  <p>Generic syntax is nearly the same as TypeScript. Angle brackets after the name, then use <code>T</code> like any other type.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+function first<T>(items: T[]): T | undefined {
+  return items[0];
+}
+
+class Stack<T> {
+  private items: T[] = [];
+
+  push(item: T) {
+    this.items.push(item);
+  }
+
+  pop(): T | undefined {
+    return this.items.pop();
+  }
+}
+
+const s = new Stack<number>();
+s.push(1);
+</script>
+<script type="text/x-code" data-lang="rust">
+fn first<T>(items: &[T]) -> Option<&T> {
+    items.first()
+}
+
+struct Stack<T> {
+    items: Vec<T>,
+}
+
+impl<T> Stack<T> {
+    fn new() -> Self {
+        Stack { items: Vec::new() }
+    }
+
+    fn push(&mut self, item: T) {
+        self.items.push(item);
+    }
+
+    fn pop(&mut self) -> Option<T> {
+        self.items.pop()
+    }
+}
+
+let mut s: Stack<i32> = Stack::new();
+s.push(1);
+</script>
+  </div>
+  <p>Note the <code>impl&lt;T&gt; Stack&lt;T&gt;</code>. The first <code>&lt;T&gt;</code> declares the type parameter. The second one uses it. Read it as "for every type T, here are the methods of <code>Stack&lt;T&gt;</code>".</p>
+
+  <h3>Generics need bounds to do anything</h3>
+  <p>This is the main difference from TypeScript. TypeScript lets you compare two values of any type with <code>&gt;</code>. Rust knows nothing about <code>T</code> unless you add a bound, so even <code>&gt;</code> fails.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+function max<T>(a: T, b: T): T {
+  return a > b ? a : b; // TS allows this
+}
+
+max(3, 7);         // 7
+max("a", "b");     // "b"
+max({}, []);       // compiles, means nothing
+</script>
+<script type="text/x-code" data-lang="rust">
+fn max<T>(a: T, b: T) -> T {
+    if a > b { a } else { b }
+    // error[E0369]: binary operation `>`
+    // cannot be applied to type `T`
+}
+
+// The fix: T must support ordering
+fn max<T: PartialOrd>(a: T, b: T) -> T {
+    if a > b { a } else { b }
+}
+</script>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Idea</th><th>TypeScript</th><th>Rust</th></tr></thead>
+      <tbody>
+        <tr><td>Generic function</td><td><code>function f&lt;T&gt;(x: T)</code></td><td><code>fn f&lt;T&gt;(x: T)</code></td></tr>
+        <tr><td>Constraint</td><td><code>T extends Shape</code></td><td><code>T: Shape</code></td></tr>
+        <tr><td>Several constraints</td><td><code>T extends A &amp; B</code></td><td><code>T: A + B</code></td></tr>
+        <tr><td>Generic class or struct</td><td><code>class Box&lt;T&gt;</code></td><td><code>struct Wrapper&lt;T&gt;</code> + <code>impl&lt;T&gt; Wrapper&lt;T&gt;</code></td></tr>
+        <tr><td>Default type</td><td><code>&lt;T = string&gt;</code></td><td><code>&lt;T = String&gt;</code> (structs and traits only)</td></tr>
+        <tr><td>Explicit type at the call</td><td><code>parse&lt;number&gt;(x)</code></td><td><code>parse::&lt;i32&gt;()</code> (the turbofish)</td></tr>
+        <tr><td>Let the compiler pick</td><td>leave it out</td><td>leave it out, or write <code>_</code>: <code>Vec&lt;_&gt;</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>Standard traits you will meet</h2>
+  <p>The standard library has a handful of traits that show up everywhere. Many of them do jobs that JavaScript gives every object for free. In Rust you opt in, usually with one <code>#[derive(...)]</code> line above the struct. The compiler then writes the <code>impl</code> for you.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Trait</th><th>Closest JS idea</th><th>What it gives you</th><th>Derive?</th></tr></thead>
+      <tbody>
+        <tr><td><code>Debug</code></td><td><code>console.log(obj)</code></td><td>Printing with <code>{:?}</code> and <code>{:#?}</code></td><td>Yes</td></tr>
+        <tr><td><code>Display</code></td><td><code>toString()</code></td><td>Printing with <code>{}</code>, plus <code>.to_string()</code></td><td>No, write it</td></tr>
+        <tr><td><code>Clone</code></td><td><code>structuredClone(obj)</code></td><td>An explicit deep copy with <code>.clone()</code></td><td>Yes</td></tr>
+        <tr><td><code>Copy</code></td><td>how numbers behave</td><td>Copies on assignment instead of moving</td><td>Yes, small types only</td></tr>
+        <tr><td><code>PartialEq</code></td><td><code>===</code>, but by value</td><td><code>==</code> and <code>!=</code></td><td>Yes</td></tr>
+        <tr><td><code>PartialOrd</code> / <code>Ord</code></td><td><code>&lt;</code>, and a sort compare function</td><td><code>&lt;</code>, <code>&gt;</code>, <code>.sort()</code></td><td>Yes</td></tr>
+        <tr><td><code>Hash</code> (+ <code>Eq</code>)</td><td>valid <code>Map</code> key</td><td>Use as a <code>HashMap</code> key</td><td>Yes</td></tr>
+        <tr><td><code>Default</code></td><td>default parameter values</td><td><code>Type::default()</code></td><td>Yes</td></tr>
+        <tr><td><code>From</code> / <code>Into</code></td><td><code>String(x)</code>, <code>Number(x)</code></td><td>Conversions between types</td><td>No, write it</td></tr>
+        <tr><td><code>Iterator</code></td><td><code>[Symbol.iterator]</code></td><td><code>for</code> loops and all of <code>map</code>, <code>filter</code> and friends</td><td>No, write it</td></tr>
+        <tr><td><code>Serialize</code> / <code>Deserialize</code></td><td><code>JSON.stringify</code> / <code>JSON.parse</code></td><td>JSON and other formats (from the serde crate)</td><td>Yes, with serde</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const a = { name: "Ana", age: 30 };
+const b = structuredClone(a);
+
+console.log(a);       // { name: 'Ana', age: 30 }
+console.log(a === b); // false! compares references
+</script>
+<script type="text/x-code" data-lang="rust">
+#[derive(Debug, Clone, PartialEq, Default)]
+struct User {
+    name: String,
+    age: u32,
+}
+
+let a = User { name: "Ana".into(), age: 30 };
+let b = a.clone();
+
+println!("{:?}", a);    // User { name: "Ana", age: 30 }
+println!("{}", a == b); // true, compares every field
+println!("{:#?}", a);   // same, pretty-printed over several lines
+
+let empty = User::default(); // User { name: "", age: 0 }
+</script>
+  </div>
+  <aside class="callout note">
+    <p class="callout-title">Mental model</p>
+    <p>In Rust, <code>==</code> compares values, not references. Two users with the same fields are equal. If you want this in JavaScript you write a deep-equal helper. In Rust you add <code>PartialEq</code> to the derive list.</p>
+  </aside>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p>Start most data structs with <code>#[derive(Debug, Clone, PartialEq)]</code>. <code>Debug</code> alone saves you a lot of pain, because without it you cannot print the struct at all.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="Display">Display is your toString</h2>
+  <p>JavaScript calls <code>toString()</code> when you put an object inside a template string. Rust calls the <code>Display</code> trait when you use <code>{}</code> in <code>println!</code> or <code>format!</code>. You cannot derive it, because only you know how your type should look to a human.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+class Money {
+  constructor(public cents: number) {}
+
+  toString() {
+    const dollars = Math.floor(this.cents / 100);
+    const rest = String(this.cents % 100).padStart(2, "0");
+    return `$${dollars}.${rest}`;
+  }
+}
+
+const price = new Money(1999);
+console.log(`${price}`);      // $19.99
+const text = price.toString();
+</script>
+<script type="text/x-code" data-lang="rust">
+use std::fmt;
+
+struct Money {
+    cents: u64,
+}
+
+impl fmt::Display for Money {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "${}.{:02}", self.cents / 100, self.cents % 100)
+    }
+}
+
+let price = Money { cents: 1999 };
+println!("{price}");          // $19.99
+let text = price.to_string(); // free with Display
+</script>
+  </div>
+  <p><code>write!</code> works like <code>format!</code>, but writes into the formatter <code>f</code> instead of building a new string. <code>{:02}</code> pads the number to two digits with zeros, like <code>padStart(2, "0")</code>.</p>
+
+  <h3>From and Into for conversions</h3>
+  <p>When one of your types can turn into another, implement <code>From</code>. You then get <code>.into()</code> in the other direction for free. You have already used this: <code>"Ana".into()</code> turns a <code>&amp;str</code> into a <code>String</code> through this trait.</p>
+<script type="text/x-code" data-lang="rust">
+struct Celsius(f64);
+struct Fahrenheit(f64);
+
+impl From<Celsius> for Fahrenheit {
+    fn from(c: Celsius) -> Self {
+        Fahrenheit(c.0 * 9.0 / 5.0 + 32.0)
+    }
+}
+
+let boiling = Fahrenheit::from(Celsius(100.0)); // 212.0
+let freezing: Fahrenheit = Celsius(0.0).into(); // 32.0, `into` comes free
+</script>
+  <p><code>struct Celsius(f64)</code> is a tuple struct: a struct whose one field has no name. You reach the field with <code>.0</code>. It is a cheap way to give a plain number its own type, so you cannot mix up Celsius and Fahrenheit by accident.</p>
+</section>
+
+<section>
+  <h2>Making your own iterator</h2>
+  <p>In JavaScript, an object becomes iterable when it has a <code>[Symbol.iterator]</code> method, often a generator. In Rust, you implement the <code>Iterator</code> trait. It needs exactly one method, <code>next</code>, which returns <code>Some(value)</code> or <code>None</code> when it is done.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+class Countdown {
+  constructor(private n: number) {}
+
+  *[Symbol.iterator]() {
+    while (this.n > 0) {
+      yield this.n--;
+    }
+  }
+}
+
+for (const x of new Countdown(3)) {
+  console.log(x); // 3, 2, 1
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+struct Countdown {
+    n: u32,
+}
+
+impl Iterator for Countdown {
+    type Item = u32;
+
+    fn next(&mut self) -> Option<u32> {
+        if self.n == 0 {
+            None
+        } else {
+            self.n -= 1;
+            Some(self.n + 1)
+        }
+    }
+}
+
+for x in (Countdown { n: 3 }) {
+    println!("{x}"); // 3, 2, 1
+}
+</script>
+  </div>
+  <p><code>type Item = u32;</code> is an associated type. It tells Rust what the iterator yields. It is like the <code>T</code> in TypeScript's <code>Iterator&lt;T&gt;</code>, but fixed by the type instead of passed in.</p>
+  <p>The best part: one <code>next</code> method unlocks every iterator method from <a href="arrays.html">lesson 7</a>. You never write <code>map</code> or <code>sum</code> yourself.</p>
+<script type="text/x-code" data-lang="rust">
+let total: u32 = Countdown { n: 3 }.map(|x| x * 10).sum();
+println!("{total}"); // 60
+
+let list: Vec<u32> = Countdown { n: 5 }.filter(|x| x % 2 == 1).collect();
+println!("{list:?}"); // [5, 3, 1]
+</script>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p>Write <code>for x in (Countdown { n: 3 })</code> with parentheses. Without them, Rust reads the <code>{</code> as the start of the loop body and gives a confusing error.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Operator overloading</h2>
+  <p>JavaScript has no operator overloading. For a 2D point you would write <code>p1.add(p2)</code>. In Rust, every operator is a trait in <code>std::ops</code>. Implement the trait and the operator works on your type.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+class Point {
+  constructor(public x: number, public y: number) {}
+
+  add(other: Point) {
+    return new Point(this.x + other.x, this.y + other.y);
+  }
+}
+
+const p = new Point(1, 2).add(new Point(3, 4));
+// p1 + p2 would give "[object Object][object Object]"
+</script>
+<script type="text/x-code" data-lang="rust">
+use std::ops::Add;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Point {
+    x: f64,
+    y: f64,
+}
+
+impl Add for Point {
+    type Output = Point;
+
+    fn add(self, other: Point) -> Point {
+        Point { x: self.x + other.x, y: self.y + other.y }
+    }
+}
+
+let p = Point { x: 1.0, y: 2.0 } + Point { x: 3.0, y: 4.0 };
+println!("{p:?}"); // Point { x: 4.0, y: 6.0 }
+</script>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Operator</th><th>Trait</th><th>Method</th></tr></thead>
+      <tbody>
+        <tr><td><code>a + b</code>, <code>a - b</code>, <code>a * b</code>, <code>a / b</code></td><td><code>Add</code>, <code>Sub</code>, <code>Mul</code>, <code>Div</code></td><td><code>add</code>, <code>sub</code>, <code>mul</code>, <code>div</code></td></tr>
+        <tr><td><code>a += b</code></td><td><code>AddAssign</code></td><td><code>add_assign</code></td></tr>
+        <tr><td><code>-a</code></td><td><code>Neg</code></td><td><code>neg</code></td></tr>
+        <tr><td><code>a[i]</code></td><td><code>Index</code> / <code>IndexMut</code></td><td><code>index</code></td></tr>
+        <tr><td><code>a == b</code></td><td><code>PartialEq</code></td><td><code>eq</code></td></tr>
+        <tr><td><code>a &lt; b</code></td><td><code>PartialOrd</code></td><td><code>partial_cmp</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Use this for math-like types: points, vectors, money, matrices. Do not make <code>+</code> do something surprising, like sending an email.</p>
+</section>
+
+<section>
+  <h2>What generics cost at runtime</h2>
+  <p>In JavaScript, every method call looks up the method on the object at runtime. Rust lets you choose.</p>
+  <ul>
+    <li><strong>Generics and <code>impl Trait</code>.</strong> The compiler makes a separate copy of the function for each type you use it with. A call to <code>print_area</code> with a <code>Circle</code> and with a <code>Square</code> becomes two functions. This is called monomorphization. Calls are as fast as a normal function call, and the compiler can inline them. The cost is a slightly bigger program and longer builds.</li>
+    <li><strong><code>dyn Trait</code>.</strong> There is only one copy of the function. At runtime it follows a pointer to a small table of methods (the vtable) to find the right <code>area</code>. That lookup costs a tiny bit of time, about what JavaScript pays on every call.</li>
+  </ul>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p>Start with <code>impl Trait</code> or generics. Switch to <code>dyn Trait</code> when you need different types in one list, or a function that returns different types. The speed difference almost never matters in app code. Pick whatever makes the code simpler.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Check yourself</h2>
+  <div class="quiz">
+    <details>
+      <summary>Your <code>Dog</code> struct has a <code>name()</code> method, but passing it where <code>impl Named</code> is expected fails. Why?</summary>
+      <div><p>Rust uses nominal typing. Having a method with the right name is not enough. You must write <code>impl Named for Dog { ... }</code> so the compiler knows <code>Dog</code> fits the trait.</p></div>
+    </details>
+    <details>
+      <summary>How do you make <code>println!("{:?}", user)</code> work?</summary>
+      <div><p>Add <code>#[derive(Debug)]</code> above the struct. For <code>{}</code> without the <code>:?</code>, implement <code>std::fmt::Display</code> yourself.</p></div>
+    </details>
+    <details>
+      <summary>What is the Rust version of <code>T extends Shape &amp; Debug</code>?</summary>
+      <div><p><code>T: Shape + Debug</code>, either inside the angle brackets or in a <code>where</code> clause.</p></div>
+    </details>
+    <details>
+      <summary>Can <code>fn make(flag: bool) -&gt; impl Shape</code> return a <code>Circle</code> in one branch and a <code>Square</code> in the other?</summary>
+      <div><p>No. <code>impl Shape</code> is one hidden type. Return <code>Box&lt;dyn Shape&gt;</code> and wrap each value in <code>Box::new(...)</code>.</p></div>
+    </details>
+    <details>
+      <summary>Which single method must you write to make your type an iterator?</summary>
+      <div><p><code>fn next(&amp;mut self) -&gt; Option&lt;Self::Item&gt;</code>, plus the line <code>type Item = ...;</code>. Every other iterator method comes for free.</p></div>
+    </details>
+    <details>
+      <summary>Two <code>User</code> values with the same fields: is <code>a == b</code> true?</summary>
+      <div><p>Yes, if <code>User</code> derives <code>PartialEq</code>. Rust's <code>==</code> compares values field by field. Without <code>PartialEq</code>, the code does not compile at all.</p></div>
+    </details>
+  </div>
+</section>
+
+</main>
+<script src="assets/app.js"></script>
+</body>
+</html>

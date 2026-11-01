@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cheat sheet · Rust from JS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<script>try{var t=localStorage.getItem('rjs-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body data-page="cheatsheet.html">
+<main class="lesson">
+
+<header class="lesson-head">
+  <p class="eyebrow">Reference</p>
+  <h1>Cheat sheet</h1>
+  <p class="lead">Every JavaScript and TypeScript habit from this guide, next to the Rust you write instead. Keep this page open in a tab while you code. Each section links to the lesson that explains it.</p>
+</header>
+
+<section>
+  <h2 data-short="Variables">Variables and types</h2>
+  <p>Full lesson: <a href="variables.html">Variables and types</a>.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>JavaScript / TypeScript</th><th>Rust</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td><code class="js">const x = 5</code></td><td><code class="rs">let x = 5;</code></td><td>Rust's plain <code>let</code> never changes</td></tr>
+        <tr><td><code class="js">let x = 5</code></td><td><code class="rs">let mut x = 5;</code></td><td><code>mut</code> also unlocks the contents</td></tr>
+        <tr><td><code class="js">export const MAX = 10</code></td><td><code class="rs">pub const MAX: u32 = 10;</code></td><td>Type is required on <code>const</code></td></tr>
+        <tr><td><code class="js">let n: number</code></td><td><code class="rs">let n: i32</code> or <code class="rs">f64</code></td><td>Pick an integer or a float type</td></tr>
+        <tr><td><code class="js">let s: string</code></td><td><code class="rs">String</code> or <code class="rs">&amp;str</code></td><td>Owned text or borrowed text</td></tr>
+        <tr><td><code class="js">boolean</code></td><td><code class="rs">bool</code></td><td>No truthy or falsy values</td></tr>
+        <tr><td><code class="js">[number, string]</code></td><td><code class="rs">(i32, String)</code></td><td>Tuple, read with <code>.0</code> and <code>.1</code></td></tr>
+        <tr><td><code class="js">void</code></td><td><code class="rs">()</code></td><td>The unit type</td></tr>
+        <tr><td><code class="js">any</code></td><td>none</td><td>Use an enum, a generic, or <code>serde_json::Value</code></td></tr>
+        <tr><td><code class="js">string | number</code></td><td><code class="rs">enum</code></td><td>See <a href="enums.html">enums</a></td></tr>
+        <tr><td><code class="js">typeof x</code></td><td>none</td><td>The compiler always knows the type</td></tr>
+        <tr><td>new name: <code class="js">const trimmed = s.trim()</code></td><td><code class="rs">let s = s.trim();</code></td><td>Shadowing reuses the name</td></tr>
+        <tr><td><code class="js">userName</code></td><td><code class="rs">user_name</code></td><td>snake_case for variables and functions</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2 data-short="Numbers">Numbers and conversion</h2>
+  <p>Full lesson: <a href="variables.html#numbers-come-in-many-sizes">Variables and types</a>.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>JavaScript / TypeScript</th><th>Rust</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td><code class="js">Number("42")</code></td><td><code class="rs">"42".parse::&lt;i32&gt;()?</code></td><td>Returns a <code>Result</code></td></tr>
+        <tr><td><code class="js">parseFloat("1.5")</code></td><td><code class="rs">"1.5".parse::&lt;f64&gt;()?</code></td><td></td></tr>
+        <tr><td><code class="js">String(42)</code></td><td><code class="rs">42.to_string()</code></td><td></td></tr>
+        <tr><td><code class="js">7 / 2</code> is <code class="js">3.5</code></td><td><code class="rs">7 / 2</code> is <code class="rs">3</code></td><td>Use <code>7.0 / 2.0</code> for decimals</td></tr>
+        <tr><td><code class="js">a + b</code> (int + float)</td><td><code class="rs">a as f64 + b</code></td><td>Types never mix on their own</td></tr>
+        <tr><td><code class="js">Math.trunc(3.9)</code></td><td><code class="rs">3.9_f64 as i32</code></td><td>Gives <code>3</code></td></tr>
+        <tr><td><code class="js">Math.floor(x)</code>, <code class="js">Math.round(x)</code></td><td><code class="rs">x.floor()</code>, <code class="rs">x.round()</code></td><td>Methods on <code>f64</code></td></tr>
+        <tr><td><code class="js">Math.max(a, b)</code></td><td><code class="rs">a.max(b)</code></td><td></td></tr>
+        <tr><td><code class="js">Math.abs(x)</code></td><td><code class="rs">x.abs()</code></td><td></td></tr>
+        <tr><td><code class="js">x ** 2</code></td><td><code class="rs">x.pow(2)</code> / <code class="rs">x.powi(2)</code></td><td>Integer / float</td></tr>
+        <tr><td><code class="js">Math.sqrt(x)</code></td><td><code class="rs">x.sqrt()</code></td><td>Floats only</td></tr>
+        <tr><td><code class="js">Number.isNaN(x)</code></td><td><code class="rs">x.is_nan()</code></td><td></td></tr>
+        <tr><td><code class="js">Number.MAX_SAFE_INTEGER</code></td><td><code class="rs">i64::MAX</code>, <code class="rs">u32::MAX</code></td><td>Every type has <code>MIN</code> and <code>MAX</code></td></tr>
+        <tr><td>silent overflow</td><td><code class="rs">x.checked_add(1)</code></td><td>Returns <code>None</code> on overflow</td></tr>
+        <tr><td><code class="js">Math.random()</code></td><td><code class="rs">rand::random::&lt;f64&gt;()</code></td><td>Needs the <code>rand</code> crate</td></tr>
+        <tr><td><code class="js">1_000_000</code></td><td><code class="rs">1_000_000</code></td><td>Same</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>Strings</h2>
+  <p>Full lesson: <a href="strings.html">Strings</a>.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>JavaScript / TypeScript</th><th>Rust</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td><code class="js">"text"</code> or <code class="js">'text'</code></td><td><code class="rs">"text"</code></td><td>Single quotes make a <code>char</code></td></tr>
+        <tr><td>a string you own and change</td><td><code class="rs">String::from("text")</code></td><td>Or <code>"text".to_string()</code></td></tr>
+        <tr><td><code class="js">`Hello ${name}`</code></td><td><code class="rs">format!("Hello {name}")</code></td><td></td></tr>
+        <tr><td><code class="js">console.log(x)</code></td><td><code class="rs">println!("{x}")</code></td><td><code>{:?}</code> for debug, <code>{:#?}</code> for pretty</td></tr>
+        <tr><td><code class="js">console.error(x)</code></td><td><code class="rs">eprintln!("{x}")</code></td><td></td></tr>
+        <tr><td><code class="js">s.length</code></td><td><code class="rs">s.chars().count()</code></td><td><code>s.len()</code> counts bytes</td></tr>
+        <tr><td><code class="js">s + t</code></td><td><code class="rs">format!("{s}{t}")</code></td><td>Or <code>s.push_str(&amp;t)</code></td></tr>
+        <tr><td><code class="js">s === t</code></td><td><code class="rs">s == t</code></td><td>Compares the text</td></tr>
+        <tr><td><code class="js">s.toUpperCase()</code></td><td><code class="rs">s.to_uppercase()</code></td><td></td></tr>
+        <tr><td><code class="js">s.trim()</code></td><td><code class="rs">s.trim()</code></td><td>Returns a <code>&amp;str</code></td></tr>
+        <tr><td><code class="js">s.includes("x")</code></td><td><code class="rs">s.contains("x")</code></td><td></td></tr>
+        <tr><td><code class="js">s.startsWith("x")</code></td><td><code class="rs">s.starts_with("x")</code></td><td><code>ends_with</code> too</td></tr>
+        <tr><td><code class="js">s.split(",")</code></td><td><code class="rs">s.split(',').collect::&lt;Vec&lt;_&gt;&gt;()</code></td><td><code>split</code> gives an iterator</td></tr>
+        <tr><td><code class="js">s.replaceAll("a", "b")</code></td><td><code class="rs">s.replace("a", "b")</code></td><td>Rust's <code>replace</code> replaces all</td></tr>
+        <tr><td><code class="js">s.replace("a", "b")</code></td><td><code class="rs">s.replacen("a", "b", 1)</code></td><td>First match only</td></tr>
+        <tr><td><code class="js">s[0]</code></td><td><code class="rs">s.chars().next()</code></td><td>No indexing into strings</td></tr>
+        <tr><td><code class="js">s.slice(0, 3)</code></td><td><code class="rs">&amp;s[0..3]</code></td><td>Byte positions, ASCII only to be safe</td></tr>
+        <tr><td><code class="js">[...s]</code></td><td><code class="rs">s.chars()</code></td><td></td></tr>
+        <tr><td><code class="js">s.padStart(5, "0")</code></td><td><code class="rs">format!("{:0&gt;5}", s)</code></td><td></td></tr>
+        <tr><td><code class="js">n.toFixed(2)</code></td><td><code class="rs">format!("{:.2}", n)</code></td><td></td></tr>
+        <tr><td>parameter type for text</td><td><code class="rs">fn f(s: &amp;str)</code></td><td>Accepts both <code>&amp;String</code> and literals</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const name = "Ana";
+const total = 9.5;
+console.log(`${name} owes $${total.toFixed(2)}`);
+console.log(user);           // prints the object
+</script>
+<script type="text/x-code" data-lang="rust">
+let name = "Ana";
+let total = 9.5;
+println!("{name} owes ${total:.2}");
+println!("{user:?}");        // needs #[derive(Debug)]
+</script>
+  </div>
+</section>
+
+<section>
+  <h2 data-short="Arrays">Arrays and iterators</h2>
+  <p>Full lesson: <a href="arrays.html">Arrays, vectors, iterators</a>.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>JavaScript / TypeScript</th><th>Rust</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td><code class="js">[1, 2, 3]</code></td><td><code class="rs">vec![1, 2, 3]</code></td><td><code>[1, 2, 3]</code> is a fixed-size array</td></tr>
+        <tr><td><code class="js">const xs: number[] = []</code></td><td><code class="rs">let mut xs: Vec&lt;i32&gt; = Vec::new();</code></td><td></td></tr>
+        <tr><td><code class="js">xs.length</code></td><td><code class="rs">xs.len()</code></td><td>Type is <code>usize</code></td></tr>
+        <tr><td><code class="js">xs.length === 0</code></td><td><code class="rs">xs.is_empty()</code></td><td></td></tr>
+        <tr><td><code class="js">xs.push(x)</code></td><td><code class="rs">xs.push(x)</code></td><td>Needs <code>mut</code></td></tr>
+        <tr><td><code class="js">xs.pop()</code></td><td><code class="rs">xs.pop()</code></td><td>Returns <code>Option</code></td></tr>
+        <tr><td><code class="js">xs[0]</code></td><td><code class="rs">xs[0]</code> / <code class="rs">xs.get(0)</code></td><td><code>[]</code> panics when out of range, <code>get</code> returns <code>Option</code></td></tr>
+        <tr><td><code class="js">xs.at(-1)</code></td><td><code class="rs">xs.last()</code></td><td><code>first()</code> too</td></tr>
+        <tr><td><code class="js">xs.map(f)</code></td><td><code class="rs">xs.iter().map(f).collect::&lt;Vec&lt;_&gt;&gt;()</code></td><td>Lazy until <code>collect</code></td></tr>
+        <tr><td><code class="js">xs.filter(f)</code></td><td><code class="rs">xs.iter().filter(f)</code></td><td>Closure gets <code>&amp;&amp;T</code></td></tr>
+        <tr><td><code class="js">xs.reduce((a, b) =&gt; a + b, 0)</code></td><td><code class="rs">xs.iter().sum::&lt;i32&gt;()</code></td><td>Or <code>.fold(0, |acc, x| acc + x)</code></td></tr>
+        <tr><td><code class="js">xs.find(f)</code></td><td><code class="rs">xs.iter().find(f)</code></td><td>Returns <code>Option&lt;&amp;T&gt;</code></td></tr>
+        <tr><td><code class="js">xs.findIndex(f)</code></td><td><code class="rs">xs.iter().position(f)</code></td><td>Returns <code>Option&lt;usize&gt;</code></td></tr>
+        <tr><td><code class="js">xs.some(f)</code> / <code class="js">xs.every(f)</code></td><td><code class="rs">.any(f)</code> / <code class="rs">.all(f)</code></td><td></td></tr>
+        <tr><td><code class="js">xs.includes(x)</code></td><td><code class="rs">xs.contains(&amp;x)</code></td><td>Takes a reference</td></tr>
+        <tr><td><code class="js">xs.forEach(f)</code></td><td><code class="rs">for x in &amp;xs { }</code></td><td>A plain loop is normal in Rust</td></tr>
+        <tr><td><code class="js">xs.map((x, i) =&gt; ...)</code></td><td><code class="rs">xs.iter().enumerate()</code></td><td>Gives <code>(index, item)</code></td></tr>
+        <tr><td><code class="js">xs.sort((a, b) =&gt; a - b)</code></td><td><code class="rs">xs.sort()</code></td><td>Sorts in place, numbers sort as numbers</td></tr>
+        <tr><td><code class="js">users.sort((a, b) =&gt; a.age - b.age)</code></td><td><code class="rs">users.sort_by_key(|u| u.age)</code></td><td>Or <code>sort_by(|a, b| a.age.cmp(&amp;b.age))</code></td></tr>
+        <tr><td><code class="js">xs.toSorted()</code></td><td><code class="rs">let mut c = xs.clone(); c.sort();</code></td><td></td></tr>
+        <tr><td><code class="js">xs.reverse()</code></td><td><code class="rs">xs.reverse()</code></td><td></td></tr>
+        <tr><td><code class="js">xs.slice(1, 3)</code></td><td><code class="rs">&amp;xs[1..3]</code></td><td>A slice, no copy</td></tr>
+        <tr><td><code class="js">xs.splice(i, 1)</code></td><td><code class="rs">xs.remove(i)</code></td><td></td></tr>
+        <tr><td><code class="js">[...a, ...b]</code></td><td><code class="rs">[a, b].concat()</code></td><td>Or <code>a.extend(b)</code></td></tr>
+        <tr><td><code class="js">xs.join(", ")</code></td><td><code class="rs">xs.join(", ")</code></td><td>For lists of strings</td></tr>
+        <tr><td><code class="js">xs.flat()</code> / <code class="js">xs.flatMap(f)</code></td><td><code class="rs">.flatten()</code> / <code class="rs">.flat_map(f)</code></td><td></td></tr>
+        <tr><td><code class="js">Array.from({ length: 5 }, (_, i) =&gt; i)</code></td><td><code class="rs">(0..5).collect::&lt;Vec&lt;_&gt;&gt;()</code></td><td></td></tr>
+        <tr><td><code class="js">[...new Set(xs)]</code></td><td><code class="rs">xs.sort(); xs.dedup();</code></td><td>Or collect into a <code>HashSet</code></td></tr>
+        <tr><td>zip two lists</td><td><code class="rs">a.iter().zip(b.iter())</code></td><td></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const names = users
+  .filter((u) => u.active)
+  .map((u) => u.name.toUpperCase());
+</script>
+<script type="text/x-code" data-lang="rust">
+let names: Vec<String> = users
+    .iter()
+    .filter(|u| u.active)
+    .map(|u| u.name.to_uppercase())
+    .collect();
+</script>
+  </div>
+</section>
+
+<section>
+  <h2 data-short="Objects">Objects, structs and maps</h2>
+  <p>Full lessons: <a href="objects.html">Objects, structs, maps</a> and <a href="enums.html">Enums and pattern matching</a>.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>JavaScript / TypeScript</th><th>Rust</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td><code class="js">type User = { name: string; age: number }</code></td><td><code class="rs">struct User { name: String, age: u32 }</code></td><td></td></tr>
+        <tr><td><code class="js">{ name: "Ana", age: 30 }</code></td><td><code class="rs">User { name: "Ana".to_string(), age: 30 }</code></td><td>Every field must be set</td></tr>
+        <tr><td><code class="js">{ name, age }</code></td><td><code class="rs">User { name, age }</code></td><td>Same shorthand</td></tr>
+        <tr><td><code class="js">{ ...user, age: 31 }</code></td><td><code class="rs">User { age: 31, ..user }</code></td><td>Spread goes last</td></tr>
+        <tr><td><code class="js">const { name, age } = user</code></td><td><code class="rs">let User { name, age } = user;</code></td><td></td></tr>
+        <tr><td><code class="js">age?: number</code></td><td><code class="rs">age: Option&lt;u32&gt;</code></td><td></td></tr>
+        <tr><td><code class="js">class User { ... }</code></td><td><code class="rs">struct User</code> + <code class="rs">impl User { ... }</code></td><td>Data and methods are separate</td></tr>
+        <tr><td><code class="js">constructor(...)</code></td><td><code class="rs">fn new(...) -&gt; Self</code></td><td>A convention, not a keyword</td></tr>
+        <tr><td><code class="js">this</code></td><td><code class="rs">self</code></td><td>Written as the first parameter</td></tr>
+        <tr><td><code class="js">static create()</code></td><td><code class="rs">fn create() -&gt; Self</code></td><td>No <code>self</code>, call as <code>User::create()</code></td></tr>
+        <tr><td><code class="js">console.log(obj)</code></td><td><code class="rs">#[derive(Debug)]</code> + <code class="rs">{:?}</code></td><td></td></tr>
+        <tr><td><code class="js">structuredClone(obj)</code></td><td><code class="rs">#[derive(Clone)]</code> + <code class="rs">obj.clone()</code></td><td>Deep copy</td></tr>
+        <tr><td>deep equal</td><td><code class="rs">#[derive(PartialEq)]</code> + <code class="rs">a == b</code></td><td></td></tr>
+        <tr><td><code class="js">new Map()</code> / <code class="js">Record&lt;string, number&gt;</code></td><td><code class="rs">HashMap&lt;String, i32&gt;</code></td><td><code>use std::collections::HashMap;</code></td></tr>
+        <tr><td><code class="js">m.set(k, v)</code></td><td><code class="rs">m.insert(k, v)</code></td><td></td></tr>
+        <tr><td><code class="js">m.get(k)</code></td><td><code class="rs">m.get(&amp;k)</code></td><td>Returns <code>Option&lt;&amp;V&gt;</code></td></tr>
+        <tr><td><code class="js">m.has(k)</code> / <code class="js">m.delete(k)</code></td><td><code class="rs">m.contains_key(&amp;k)</code> / <code class="rs">m.remove(&amp;k)</code></td><td></td></tr>
+        <tr><td><code class="js">m[k] = (m[k] ?? 0) + 1</code></td><td><code class="rs">*m.entry(k).or_insert(0) += 1;</code></td><td>The counting idiom</td></tr>
+        <tr><td><code class="js">Object.entries(obj)</code></td><td><code class="rs">for (k, v) in &amp;m { }</code></td><td>Also <code>m.keys()</code>, <code>m.values()</code></td></tr>
+        <tr><td><code class="js">new Set()</code></td><td><code class="rs">HashSet&lt;T&gt;</code></td><td></td></tr>
+        <tr><td><code class="js">"admin" | "user"</code></td><td><code class="rs">enum Role { Admin, User }</code></td><td></td></tr>
+        <tr><td>discriminated union with <code class="js">kind</code></td><td><code class="rs">enum Shape { Circle { r: f64 }, Square(f64) }</code></td><td>Each variant carries its own data</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2 data-short="Control flow">Control flow</h2>
+  <p>Full lesson: <a href="control-flow.html">Conditions and loops</a>.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>JavaScript / TypeScript</th><th>Rust</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td><code class="js">if (x &gt; 0) { }</code></td><td><code class="rs">if x &gt; 0 { }</code></td><td>No parentheses, braces required</td></tr>
+        <tr><td><code class="js">if (items.length)</code></td><td><code class="rs">if !items.is_empty()</code></td><td>Condition must be a <code>bool</code></td></tr>
+        <tr><td><code class="js">c ? a : b</code></td><td><code class="rs">if c { a } else { b }</code></td><td><code>if</code> returns a value</td></tr>
+        <tr><td><code class="js">switch (x) { case 1: ... }</code></td><td><code class="rs">match x { 1 =&gt; ..., _ =&gt; ... }</code></td><td>Must cover every case</td></tr>
+        <tr><td><code class="js">case 1: case 2:</code></td><td><code class="rs">1 | 2 =&gt;</code></td><td>No fall-through, no <code>break</code></td></tr>
+        <tr><td><code class="js">default:</code></td><td><code class="rs">_ =&gt;</code></td><td></td></tr>
+        <tr><td><code class="js">for (let i = 0; i &lt; n; i++)</code></td><td><code class="rs">for i in 0..n</code></td><td><code>0..=n</code> includes <code>n</code></td></tr>
+        <tr><td>count down</td><td><code class="rs">for i in (0..n).rev()</code></td><td></td></tr>
+        <tr><td><code class="js">for (const x of xs)</code></td><td><code class="rs">for x in &amp;xs</code></td><td>Without <code>&amp;</code> the loop takes ownership</td></tr>
+        <tr><td><code class="js">for (const [i, x] of xs.entries())</code></td><td><code class="rs">for (i, x) in xs.iter().enumerate()</code></td><td></td></tr>
+        <tr><td><code class="js">for (const [k, v] of Object.entries(o))</code></td><td><code class="rs">for (k, v) in &amp;map</code></td><td></td></tr>
+        <tr><td><code class="js">while (c) { }</code></td><td><code class="rs">while c { }</code></td><td></td></tr>
+        <tr><td><code class="js">while (true) { }</code></td><td><code class="rs">loop { }</code></td><td></td></tr>
+        <tr><td><code class="js">do { } while (c)</code></td><td><code class="rs">loop { ...; if !c { break; } }</code></td><td></td></tr>
+        <tr><td>label: <code class="js">outer: for ...</code></td><td><code class="rs">'outer: for ...</code></td><td><code>break 'outer;</code></td></tr>
+        <tr><td>result from a loop</td><td><code class="rs">let x = loop { break 42; };</code></td><td><code>break</code> can carry a value</td></tr>
+        <tr><td><code class="js">if (x !== null)</code></td><td><code class="rs">if let Some(x) = x { }</code></td><td></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2 data-short="Functions">Functions and closures</h2>
+  <p>Full lesson: <a href="functions.html">Functions and closures</a>.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>JavaScript / TypeScript</th><th>Rust</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td><code class="js">function add(a: number, b: number): number</code></td><td><code class="rs">fn add(a: i32, b: i32) -&gt; i32</code></td><td>Parameter types are required</td></tr>
+        <tr><td><code class="js">return a + b;</code></td><td><code class="rs">a + b</code></td><td>Last line without <code>;</code> is returned</td></tr>
+        <tr><td><code class="js">(x) =&gt; x * 2</code></td><td><code class="rs">|x| x * 2</code></td><td>Closure</td></tr>
+        <tr><td><code class="js">(x) =&gt; { ... }</code></td><td><code class="rs">|x| { ... }</code></td><td></td></tr>
+        <tr><td><code class="js">function f(x = 10)</code></td><td>none</td><td>Use <code>Option&lt;T&gt;</code> and <code>unwrap_or(10)</code></td></tr>
+        <tr><td><code class="js">function f(x?: number)</code></td><td><code class="rs">fn f(x: Option&lt;i32&gt;)</code></td><td>Caller passes <code>None</code></td></tr>
+        <tr><td><code class="js">function f(...xs: number[])</code></td><td><code class="rs">fn f(xs: &amp;[i32])</code></td><td>Pass a slice</td></tr>
+        <tr><td>options object parameter</td><td>a struct parameter</td><td>Often with <code>..Default::default()</code></td></tr>
+        <tr><td><code class="js">(f: (n: number) =&gt; number)</code></td><td><code class="rs">f: impl Fn(i32) -&gt; i32</code></td><td><code>FnMut</code> if it changes state</td></tr>
+        <tr><td>return a function</td><td><code class="rs">-&gt; impl Fn(i32) -&gt; i32</code></td><td>Usually with <code>move |x| ...</code></td></tr>
+        <tr><td>list of different callbacks</td><td><code class="rs">Vec&lt;Box&lt;dyn Fn()&gt;&gt;</code></td><td></td></tr>
+        <tr><td><code class="js">function id&lt;T&gt;(x: T): T</code></td><td><code class="rs">fn id&lt;T&gt;(x: T) -&gt; T</code></td><td>Same idea</td></tr>
+        <tr><td>overloads</td><td>none</td><td>Use different names, an enum, or a trait</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2 data-short="Null and errors">Null and errors</h2>
+  <p>Full lesson: <a href="errors.html">Null and errors</a>.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>JavaScript / TypeScript</th><th>Rust</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td><code class="js">null</code>, <code class="js">undefined</code></td><td><code class="rs">None</code></td><td></td></tr>
+        <tr><td><code class="js">T | null</code></td><td><code class="rs">Option&lt;T&gt;</code></td><td><code>Some(value)</code> or <code>None</code></td></tr>
+        <tr><td><code class="js">x ?? fallback</code></td><td><code class="rs">x.unwrap_or(fallback)</code></td><td></td></tr>
+        <tr><td><code class="js">x ?? compute()</code></td><td><code class="rs">x.unwrap_or_else(|| compute())</code></td><td>Only runs when empty</td></tr>
+        <tr><td><code class="js">x?.name</code></td><td><code class="rs">x.map(|u| u.name)</code></td><td>Or <code>x?.name</code> inside a function returning <code>Option</code></td></tr>
+        <tr><td><code class="js">x!</code></td><td><code class="rs">x.unwrap()</code> / <code class="rs">x.expect("msg")</code></td><td>Crashes if empty</td></tr>
+        <tr><td>a function that can throw</td><td><code class="rs">fn f() -&gt; Result&lt;T, E&gt;</code></td><td>The error is in the type</td></tr>
+        <tr><td><code class="js">throw new Error("bad")</code></td><td><code class="rs">return Err(...)</code></td><td>Or <code>anyhow::bail!("bad")</code></td></tr>
+        <tr><td>let the error bubble up</td><td><code class="rs">let v = f()?;</code></td><td>The <code>?</code> operator</td></tr>
+        <tr><td><code class="js">try { } catch (e) { }</code></td><td><code class="rs">match f() { Ok(v) =&gt; ..., Err(e) =&gt; ... }</code></td><td></td></tr>
+        <tr><td><code class="js">e.message</code></td><td><code class="rs">e.to_string()</code></td><td>Or <code>{e}</code> in <code>format!</code></td></tr>
+        <tr><td><code class="js">class MyError extends Error</code></td><td><code class="rs">enum MyError { ... }</code></td><td>The <code>thiserror</code> crate helps</td></tr>
+        <tr><td>turn missing into an error</td><td><code class="rs">x.ok_or("missing")?</code></td><td>Option to Result</td></tr>
+        <tr><td><code class="js">finally { }</code></td><td>none</td><td>Cleanup runs when values go out of scope</td></tr>
+        <tr><td>crash the program</td><td><code class="rs">panic!("msg")</code></td><td>For bugs, not expected failures</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+function parseAge(input: string): number {
+  const n = Number(input);
+  if (Number.isNaN(n)) throw new Error("not a number");
+  return n;
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+fn parse_age(input: &str) -> Result<u32, String> {
+    input
+        .trim()
+        .parse::<u32>()
+        .map_err(|_| "not a number".to_string())
+}
+</script>
+  </div>
+</section>
+
+<section>
+  <h2 data-short="Ownership">Ownership quick rules</h2>
+  <p>Full lesson: <a href="ownership.html">Ownership and borrowing</a>. JavaScript has nothing like this, so here are the rules themselves.</p>
+  <ol>
+    <li>Every value has exactly one owner.</li>
+    <li>When the owner goes out of scope, Rust frees the value.</li>
+    <li>Assigning or passing a <code>String</code>, <code>Vec</code> or struct moves it. The old name can no longer be used.</li>
+    <li>Numbers, <code>bool</code>, <code>char</code> and references are <code>Copy</code>. Assigning them copies, so the old name still works.</li>
+    <li><code>&amp;x</code> borrows to read. You can have many at once.</li>
+    <li><code>&amp;mut x</code> borrows to change. You can have only one at a time, and no readers while it exists.</li>
+    <li>A reference can never outlive the value it points to.</li>
+  </ol>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>In JavaScript you would</th><th>In Rust you write</th></tr></thead>
+      <tbody>
+        <tr><td>pass an object and keep using it</td><td><code class="rs">show(&amp;user)</code> with <code class="rs">fn show(u: &amp;User)</code></td></tr>
+        <tr><td>let a function change the array you pass</td><td><code class="rs">add(&amp;mut xs)</code> with <code class="rs">fn add(v: &amp;mut Vec&lt;i32&gt;)</code></td></tr>
+        <tr><td>hand a value over for good</td><td><code class="rs">fn save(u: User)</code></td></tr>
+        <tr><td><code class="js">const b = a</code> and use both</td><td><code class="rs">let b = &amp;a;</code> or <code class="rs">let b = a.clone();</code></td></tr>
+        <tr><td>share one object across the app</td><td><code class="rs">Rc&lt;T&gt;</code>, or <code class="rs">Arc&lt;T&gt;</code> across threads</td></tr>
+        <tr><td>share and change it across tasks</td><td><code class="rs">Arc&lt;Mutex&lt;T&gt;&gt;</code></td></tr>
+        <tr><td>accept any text</td><td><code class="rs">&amp;str</code> parameter</td></tr>
+        <tr><td>accept any list</td><td><code class="rs">&amp;[T]</code> parameter</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2 data-short="Traits">Traits and generics</h2>
+  <p>Full lesson: <a href="traits.html">Traits and generics</a>.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>JavaScript / TypeScript</th><th>Rust</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td><code class="js">interface Shape { area(): number }</code></td><td><code class="rs">trait Shape { fn area(&amp;self) -&gt; f64; }</code></td><td></td></tr>
+        <tr><td><code class="js">class Circle implements Shape</code></td><td><code class="rs">impl Shape for Circle { ... }</code></td><td>Written apart from the struct</td></tr>
+        <tr><td>method with a default body</td><td>body inside the <code class="rs">trait</code></td><td>Implementors can override it</td></tr>
+        <tr><td><code class="js">function f(s: Shape)</code></td><td><code class="rs">fn f(s: &amp;impl Shape)</code></td><td>Same as <code>fn f&lt;T: Shape&gt;(s: &amp;T)</code></td></tr>
+        <tr><td><code class="js">Shape[]</code> with mixed classes</td><td><code class="rs">Vec&lt;Box&lt;dyn Shape&gt;&gt;</code></td><td></td></tr>
+        <tr><td><code class="js">&lt;T extends Named&gt;</code></td><td><code class="rs">&lt;T: Named&gt;</code></td><td></td></tr>
+        <tr><td><code class="js">&lt;T extends A &amp; B&gt;</code></td><td><code class="rs">&lt;T: A + B&gt;</code></td><td>Or a <code>where</code> clause</td></tr>
+        <tr><td><code class="js">interface B extends A</code></td><td><code class="rs">trait B: A</code></td><td></td></tr>
+        <tr><td><code class="js">toString()</code></td><td><code class="rs">impl fmt::Display</code></td><td>Then <code>.to_string()</code> and <code>{}</code> work</td></tr>
+        <tr><td>default values for a type</td><td><code class="rs">#[derive(Default)]</code></td><td><code>User::default()</code></td></tr>
+        <tr><td>common built-in behavior</td><td><code class="rs">#[derive(Debug, Clone, PartialEq)]</code></td><td>Also <code>Eq</code>, <code>Hash</code>, <code>Serialize</code></td></tr>
+        <tr><td>operator overloading</td><td><code class="rs">impl Add for Point</code></td><td>Lets you write <code>a + b</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2 data-short="Tooling">Modules and tooling</h2>
+  <p>Full lessons: <a href="modules.html">Modules and packages</a> and <a href="setup.html">Setup and first program</a>.</p>
+  <h3>Commands</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>npm and friends</th><th>Cargo</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td><code class="js">npm init</code></td><td><code class="rs">cargo new my_app</code></td><td><code>cargo init</code> in an existing folder</td></tr>
+        <tr><td><code class="js">npm install zod</code></td><td><code class="rs">cargo add serde</code></td><td>Edits <code>Cargo.toml</code></td></tr>
+        <tr><td><code class="js">npm install -D vitest</code></td><td><code class="rs">cargo add --dev pretty_assertions</code></td><td></td></tr>
+        <tr><td><code class="js">npm uninstall zod</code></td><td><code class="rs">cargo remove serde</code></td><td></td></tr>
+        <tr><td><code class="js">npm run dev</code></td><td><code class="rs">cargo run</code></td><td>Builds, then runs</td></tr>
+        <tr><td><code class="js">npm run build</code></td><td><code class="rs">cargo build --release</code></td><td>Output in <code>target/release/</code></td></tr>
+        <tr><td><code class="js">tsc --noEmit</code></td><td><code class="rs">cargo check</code></td><td>Fast, no program built</td></tr>
+        <tr><td><code class="js">npm test</code></td><td><code class="rs">cargo test</code></td><td>Testing is built in</td></tr>
+        <tr><td><code class="js">eslint</code></td><td><code class="rs">cargo clippy</code></td><td></td></tr>
+        <tr><td><code class="js">prettier --write</code></td><td><code class="rs">cargo fmt</code></td><td></td></tr>
+        <tr><td><code class="js">npm update</code></td><td><code class="rs">cargo update</code></td><td></td></tr>
+        <tr><td><code class="js">npm install -g</code></td><td><code class="rs">cargo install</code></td><td>For command-line tools</td></tr>
+        <tr><td><code class="js">nvm install</code></td><td><code class="rs">rustup update</code></td><td></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>Files and imports</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>JavaScript / TypeScript</th><th>Rust</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td><code class="js">package.json</code></td><td><code class="rs">Cargo.toml</code></td><td></td></tr>
+        <tr><td><code class="js">package-lock.json</code></td><td><code class="rs">Cargo.lock</code></td><td></td></tr>
+        <tr><td><code class="js">node_modules/</code>, <code class="js">dist/</code></td><td><code class="rs">target/</code></td><td>Build output, add to <code>.gitignore</code></td></tr>
+        <tr><td><code class="js">devDependencies</code></td><td><code class="rs">[dev-dependencies]</code></td><td></td></tr>
+        <tr><td>npm workspaces</td><td><code class="rs">[workspace]</code></td><td></td></tr>
+        <tr><td>npmjs.com</td><td>crates.io</td><td>API docs for every crate on docs.rs</td></tr>
+        <tr><td><code class="js">import { x } from "./utils"</code></td><td><code class="rs">mod utils;</code> + <code class="rs">use utils::x;</code></td><td><code>mod</code> declares the file once</td></tr>
+        <tr><td><code class="js">import fs from "fs"</code></td><td><code class="rs">use std::fs;</code></td><td></td></tr>
+        <tr><td><code class="js">export function f</code></td><td><code class="rs">pub fn f</code></td><td>Private by default</td></tr>
+        <tr><td><code class="js">export default</code></td><td>none</td><td>Everything is named</td></tr>
+        <tr><td><code class="js">utils/index.ts</code></td><td><code class="rs">utils.rs</code> or <code class="rs">utils/mod.rs</code></td><td></td></tr>
+        <tr><td><code class="js">process.env.API_KEY</code></td><td><code class="rs">std::env::var("API_KEY")</code></td><td>Returns a <code>Result</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>Which crate replaces my npm package?</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>npm package</th><th>Crate</th></tr></thead>
+      <tbody>
+        <tr><td>axios, fetch</td><td><code class="rs">reqwest</code></td></tr>
+        <tr><td>express, fastify, Next.js API routes</td><td><code class="rs">axum</code></td></tr>
+        <tr><td>zod, JSON.parse</td><td><code class="rs">serde</code> + <code class="rs">serde_json</code></td></tr>
+        <tr><td>dotenv</td><td><code class="rs">dotenvy</code></td></tr>
+        <tr><td>lodash</td><td>the standard library + <code class="rs">itertools</code></td></tr>
+        <tr><td>date-fns, dayjs</td><td><code class="rs">chrono</code> or <code class="rs">jiff</code></td></tr>
+        <tr><td>uuid</td><td><code class="rs">uuid</code></td></tr>
+        <tr><td>commander, yargs</td><td><code class="rs">clap</code></td></tr>
+        <tr><td>prisma, knex</td><td><code class="rs">sqlx</code>, <code class="rs">diesel</code>, <code class="rs">sea-orm</code></td></tr>
+        <tr><td>winston, pino</td><td><code class="rs">tracing</code></td></tr>
+        <tr><td>jest, vitest</td><td>built in: <code class="rs">cargo test</code></td></tr>
+        <tr><td>ws, socket.io</td><td><code class="rs">tokio-tungstenite</code></td></tr>
+        <tr><td>p-limit</td><td><code class="rs">futures</code> with <code class="rs">buffer_unordered</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>Async</h2>
+  <p>Full lesson: <a href="async.html">Async and fetching data</a>.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>JavaScript / TypeScript</th><th>Rust</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td><code class="js">async function f(): Promise&lt;T&gt;</code></td><td><code class="rs">async fn f() -&gt; T</code></td><td>Return type is the plain value</td></tr>
+        <tr><td><code class="js">await p</code></td><td><code class="rs">p.await</code></td><td>Postfix</td></tr>
+        <tr><td>built-in event loop</td><td><code class="rs">#[tokio::main]</code></td><td>On <code>async fn main</code></td></tr>
+        <tr><td>Promise starts right away</td><td>Future starts on <code class="rs">.await</code></td><td>Or on <code>tokio::spawn</code></td></tr>
+        <tr><td><code class="js">await fetch(url)</code></td><td><code class="rs">reqwest::get(url).await?</code></td><td></td></tr>
+        <tr><td><code class="js">(await res.json()) as T</code></td><td><code class="rs">res.json::&lt;T&gt;().await?</code></td><td>serde checks the shape</td></tr>
+        <tr><td><code class="js">if (!res.ok)</code></td><td><code class="rs">res.error_for_status()?</code></td><td>404 is not an error by default</td></tr>
+        <tr><td><code class="js">axios.create({ ... })</code></td><td><code class="rs">reqwest::Client::builder()</code></td><td>Reuse one client</td></tr>
+        <tr><td><code class="js">Promise.all([a, b])</code></td><td><code class="rs">tokio::try_join!(a, b)?</code></td><td></td></tr>
+        <tr><td><code class="js">Promise.all(list)</code></td><td><code class="rs">try_join_all(list).await?</code></td><td>From the <code>futures</code> crate</td></tr>
+        <tr><td><code class="js">Promise.allSettled</code></td><td><code class="rs">tokio::join!</code> / <code class="rs">join_all</code></td><td>Each result is a <code>Result</code></td></tr>
+        <tr><td><code class="js">Promise.race</code></td><td><code class="rs">tokio::select! { ... }</code></td><td>The loser is cancelled</td></tr>
+        <tr><td>wait with <code class="js">setTimeout</code></td><td><code class="rs">tokio::time::sleep(d).await</code></td><td>Never <code>std::thread::sleep</code></td></tr>
+        <tr><td><code class="js">setInterval</code></td><td><code class="rs">tokio::time::interval(d)</code></td><td></td></tr>
+        <tr><td>fire and forget</td><td><code class="rs">tokio::spawn(async move { ... })</code></td><td></td></tr>
+        <tr><td><code class="js">AbortSignal.timeout(ms)</code></td><td><code class="rs">tokio::time::timeout(d, fut)</code></td><td></td></tr>
+        <tr><td><code class="js">JSON.stringify(x)</code></td><td><code class="rs">serde_json::to_string(&amp;x)?</code></td><td></td></tr>
+        <tr><td><code class="js">JSON.parse(s)</code></td><td><code class="rs">serde_json::from_str::&lt;T&gt;(&amp;s)?</code></td><td></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2 data-short="12 traps">Top 12 traps for JS developers</h2>
+  <p>These catch almost everyone in the first weeks. When the compiler complains and you do not know why, check this list first.</p>
+  <ol>
+    <li><strong>Single quotes are not strings.</strong> <code>'a'</code> is a <code>char</code>. Write text in double quotes.</li>
+    <li><strong>Integer division drops the decimals.</strong> <code>7 / 2</code> is <code>3</code>. Use floats when you want <code>3.5</code>.</li>
+    <li><strong><code>let</code> means frozen.</strong> Add <code>mut</code> to change a variable, push to a list, or set a field.</li>
+    <li><strong>Assignment moves.</strong> After <code>let b = a;</code> with a <code>String</code> or <code>Vec</code>, <code>a</code> is gone. Borrow with <code>&amp;a</code> or call <code>.clone()</code>.</li>
+    <li><strong><code>.len()</code> counts bytes.</strong> <code>"é".len()</code> is <code>2</code>. Use <code>.chars().count()</code> for characters.</li>
+    <li><strong>No <code>s[0]</code> on strings.</strong> Use <code>s.chars().next()</code> or <code>s.chars().nth(i)</code>.</li>
+    <li><strong>No truthy or falsy.</strong> <code>if items.len()</code> does not compile. Write <code>if !items.is_empty()</code>.</li>
+    <li><strong>Iterators are lazy.</strong> <code>xs.iter().map(f)</code> alone does nothing. Finish with <code>.collect()</code>, <code>.sum()</code> or a <code>for</code> loop.</li>
+    <li><strong>A semicolon changes the meaning.</strong> The last expression without <code>;</code> is the return value. Add a <code>;</code> and the function returns <code>()</code> instead.</li>
+    <li><strong>Out of range panics.</strong> <code>xs[10]</code> on a short list crashes instead of giving <code>undefined</code>. Use <code>xs.get(10)</code> when the index might be wrong.</li>
+    <li><strong>Futures do nothing until awaited.</strong> A forgotten <code>.await</code> means the request never happens. Also, reqwest does not treat a 404 as an error.</li>
+    <li><strong><code>unwrap()</code> is a crash waiting to happen.</strong> It is fine in examples and tests. In real code, use <code>?</code>, <code>match</code> or <code>unwrap_or</code>.</li>
+  </ol>
+</section>
+
+</main>
+<script src="assets/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,959 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Async and fetching data · Rust from JS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<script>try{var t=localStorage.getItem('rjs-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body data-page="async.html">
+<main class="lesson">
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 13 · Real programs</p>
+  <h1>Async and fetching data</h1>
+  <p class="lead">JavaScript gives you <code>fetch</code> and an event loop for free. Rust gives you the <code>async</code> and <code>await</code> syntax, and libraries do the rest. tokio runs async code, reqwest makes HTTP requests, and serde turns JSON into typed structs.</p>
+</header>
+
+<div class="learn">
+  <p>You will learn</p>
+  <ul>
+    <li>Why Rust needs a runtime like tokio, and what <code>#[tokio::main]</code> does</li>
+    <li>How to GET and POST JSON with reqwest, and handle status codes and errors</li>
+    <li>Why serde protects you at runtime when TypeScript's <code>as Post[]</code> does not</li>
+    <li>Why Rust futures do nothing until you await them</li>
+    <li>The Rust versions of <code>Promise.all</code>, <code>Promise.race</code>, <code>setTimeout</code> and p-limit</li>
+    <li>How a small axum API compares to Express</li>
+  </ul>
+</div>
+
+<section>
+  <h2 data-short="Why a runtime">Why Rust needs a runtime</h2>
+  <p>Node and the browser always run an event loop. It waits for network replies and timers, then runs your callbacks. You never start it yourself. It is just there.</p>
+  <p>Rust ships the <code>async</code> and <code>await</code> keywords and the <code>Future</code> type, but no event loop. Rust keeps the core language small, so you choose the runtime as a library. Almost everyone picks <strong>tokio</strong>. It gives you the event loop, timers, network sockets, and a thread pool that runs tasks on all your CPU cores.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Job</th><th>JavaScript</th><th>Rust</th></tr></thead>
+      <tbody>
+        <tr><td>Run async code</td><td>built into Node and the browser</td><td><code>tokio</code></td></tr>
+        <tr><td>HTTP requests</td><td><code>fetch</code>, axios</td><td><code>reqwest</code></td></tr>
+        <tr><td>JSON to typed data</td><td><code>JSON.parse</code> + zod</td><td><code>serde</code> + <code>serde_json</code></td></tr>
+        <tr><td>Easy error handling</td><td>try / catch</td><td><code>anyhow</code> + the <code>?</code> operator</td></tr>
+        <tr><td>Helpers for many futures</td><td><code>Promise.all</code>, p-limit</td><td><code>futures</code></td></tr>
+        <tr><td>Web server</td><td>Express, Next.js API routes</td><td><code>axum</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Setting up Cargo.toml</h3>
+  <p>Add these dependencies to start. You can also run <code>cargo add</code> for each one, which edits the file for you.</p>
+<script type="text/x-code" data-lang="toml" data-title="Cargo.toml">
+[package]
+name = "fetch_demo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+reqwest = { version = "0.12", features = ["json"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+futures = "0.3"
+</script>
+<script type="text/x-code" data-lang="bash" data-title="Same thing from the terminal">
+cargo add reqwest --features json
+cargo add tokio --features full
+cargo add serde --features derive
+cargo add serde_json anyhow futures
+</script>
+  <p>The <code>features</code> lists switch on optional parts of a crate. reqwest needs <code>json</code> for the <code>.json()</code> method. serde needs <code>derive</code> for <code>#[derive(Deserialize)]</code>. tokio's <code>full</code> turns on everything, which is fine while you learn.</p>
+
+  <h3>What #[tokio::main] does</h3>
+  <p>The program's <code>main</code> function cannot be <code>async</code> on its own, because nothing would run it. The <code>#[tokio::main]</code> attribute fixes that. It rewrites your code into a normal <code>main</code> that starts tokio and runs your async body inside it.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="rust" data-title="What you write">
+#[tokio::main]
+async fn main() {
+    println!("hello from async main");
+}
+</script>
+<script type="text/x-code" data-lang="rust" data-title="Roughly what it becomes">
+fn main() {
+    tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(async {
+            println!("hello from async main");
+        })
+}
+</script>
+  </div>
+</section>
+
+<section>
+  <h2>async and await syntax</h2>
+  <p>The keywords mean the same thing as in JavaScript. Two details differ. <code>.await</code> goes after the value, like a field. And the return type of an <code>async fn</code> is the value it gives back, not a wrapper.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+async function double(n: number): Promise<number> {
+  return n * 2;
+}
+
+async function main() {
+  const x = await double(21);
+  console.log(x); // 42
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+async fn double(n: i32) -> i32 {   // not Promise<i32>
+    n * 2
+}
+
+#[tokio::main]
+async fn main() {
+    let x = double(21).await;      // .await goes after
+    println!("{x}"); // 42
+}
+</script>
+  </div>
+  <p>Postfix <code>.await</code> reads better in chains. In JavaScript you need extra parentheses to await in the middle of a chain. In Rust you just keep going left to right.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const data = await (await fetch(url)).json();
+</script>
+<script type="text/x-code" data-lang="rust">
+let data: Post = reqwest::get(url).await?.json().await?;
+</script>
+  </div>
+  <p>There is no <code>.then()</code> in everyday Rust. You use <code>.await</code> everywhere.</p>
+</section>
+
+<section>
+  <h2 data-short="GET JSON">Your first GET request</h2>
+  <p>Here is a full program that loads a list of posts from a free test API and prints the first title. The TypeScript version uses <code>fetch</code> and a type. The Rust version uses reqwest and a struct.</p>
+  <div class="compare stretch">
+<script type="text/x-code" data-lang="ts" data-title="main.ts">
+type Post = {
+  userId: number;
+  id: number;
+  title: string;
+  body: string;
+};
+
+async function main() {
+  const res = await fetch(
+    "https://jsonplaceholder.typicode.com/posts"
+  );
+  const posts = (await res.json()) as Post[];
+
+  console.log(`Got ${posts.length} posts`);
+  console.log(`First title: ${posts[0].title}`);
+}
+
+main();
+</script>
+<script type="text/x-code" data-lang="rust" data-title="src/main.rs">
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Post {
+    user_id: u32,
+    id: u32,
+    title: String,
+    body: String,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), reqwest::Error> {
+    let posts: Vec<Post> =
+        reqwest::get("https://jsonplaceholder.typicode.com/posts")
+            .await?
+            .json()
+            .await?;
+
+    println!("Got {} posts", posts.len());
+    println!("First title: {}", posts[0].title);
+    Ok(())
+}
+</script>
+  </div>
+  <p>Read the Rust version from the top:</p>
+  <ul>
+    <li><code>#[derive(Deserialize)]</code> asks serde to write the "JSON to <code>Post</code>" code for you. <code>Debug</code> lets you print it with <code>{:?}</code>.</li>
+    <li><code>#[serde(rename_all = "camelCase")]</code> maps the JSON key <code>userId</code> to the Rust field <code>user_id</code>.</li>
+    <li><code>reqwest::get(url).await?</code> sends the request and waits for the headers. The <code>?</code> returns early if the network fails.</li>
+    <li><code>.json().await?</code> reads the body and turns it into the type on the left, <code>Vec&lt;Post&gt;</code>.</li>
+    <li><code>main</code> returns a <code>Result</code>, so <code>?</code> is allowed inside it. You learned this in <a href="errors.html">lesson 10</a>.</li>
+  </ul>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p>For a quick script where you do not want async at all, reqwest has a blocking client. Turn on the <code>blocking</code> feature and call <code>reqwest::blocking::get(url)?.json()?</code>. It is fine for small tools. Use the async client for servers and anything that makes many requests.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="serde checks types">serde really checks the shape</h2>
+  <p>This is one of the best reasons to like Rust for API work. In TypeScript, <code>as Post[]</code> is a promise you make to the compiler. Nobody checks it at runtime. The types are gone by then. If the API sends something else, your code carries on with bad data and crashes later, far away from the real cause.</p>
+  <p>serde checks every field while it parses. If the JSON does not match the struct, <code>.json()</code> returns an error right there, and it tells you what was wrong.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+// The API sends { "id": "abc", "title": null, ... }
+const posts = (await res.json()) as Post[];
+
+// No error yet. TypeScript believes you.
+const label = posts[0].title.toUpperCase();
+// TypeError: Cannot read properties of null
+// (reading 'toUpperCase'), maybe in another file
+</script>
+<script type="text/x-code" data-lang="rust">
+// The API sends { "id": "abc", "title": null, ... }
+let posts: Vec<Post> = res.json().await?;
+
+// You never get here. .json() already returned Err:
+// error decoding response body:
+//   invalid type: string "abc", expected u32
+//   at line 1 column 12
+</script>
+  </div>
+  <aside class="callout note">
+    <p class="callout-title">Mental model</p>
+    <p>A serde struct works like a zod schema and a TypeScript type in one. You write the shape once. You get the type for the compiler and a runtime check for free.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Shaping JSON fields</h2>
+  <p>Real APIs are messy. Keys use camelCase, some fields are missing, some are <code>null</code>, some have odd names. serde attributes handle all of it.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+type User = {
+  id: number;
+  firstName: string;
+  avatarUrl?: string | null;  // missing or null
+  tags?: string[];            // missing sometimes
+  "e-mail": string;           // awkward key
+};
+
+const tags = user.tags ?? [];
+</script>
+<script type="text/x-code" data-lang="rust">
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct User {
+    id: u64,
+    first_name: String,          // from "firstName"
+    avatar_url: Option<String>,  // missing or null: None
+    #[serde(default)]
+    tags: Vec<String>,           // missing: empty Vec
+    #[serde(rename = "e-mail")]
+    email: String,               // from "e-mail"
+}
+</script>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Attribute</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>#[serde(rename_all = "camelCase")]</code></td><td>Maps every <code>snake_case</code> field to a <code>camelCase</code> key. Put it on the struct.</td></tr>
+        <tr><td><code>Option&lt;T&gt;</code> field</td><td>A missing key or <code>null</code> becomes <code>None</code>.</td></tr>
+        <tr><td><code>#[serde(default)]</code></td><td>A missing key gets the type's default value: <code>0</code>, <code>""</code>, empty <code>Vec</code>.</td></tr>
+        <tr><td><code>#[serde(rename = "e-mail")]</code></td><td>Uses a different key for one field.</td></tr>
+        <tr><td><code>#[serde(skip_serializing_if = "Option::is_none")]</code></td><td>Leaves the key out of the output JSON when the value is <code>None</code>.</td></tr>
+        <tr><td><code>#[serde(deny_unknown_fields)]</code></td><td>Fails if the JSON has keys the struct does not list. By default serde ignores extra keys.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p>Only list the fields you need. If an API returns 40 fields and you use 3, your struct can have 3 fields. serde skips the rest.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Status codes and errors</h2>
+  <p>Here is a surprise that is the same in both languages. A 404 or 500 response is not an error for <code>fetch</code>, and it is not an error for reqwest either. The request worked. The server just said no. You check the status yourself.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const res = await fetch(url);
+if (!res.ok) {
+  throw new Error(`HTTP ${res.status}`);
+}
+const post = (await res.json()) as Post;
+</script>
+<script type="text/x-code" data-lang="rust">
+let res = client.get(url).send().await?;
+if !res.status().is_success() {
+    anyhow::bail!("HTTP {}", res.status());
+}
+let post: Post = res.json().await?;
+</script>
+  </div>
+  <p>reqwest has a shortcut for this check. <code>error_for_status()</code> turns any 4xx or 5xx response into an <code>Err</code>, so a <code>?</code> handles it.</p>
+<script type="text/x-code" data-lang="rust">
+let post: Post = client
+    .get(url)
+    .send()
+    .await?
+    .error_for_status()?   // 404, 500 and friends become Err
+    .json()
+    .await?;
+</script>
+
+  <h3>Functions that fetch</h3>
+  <p>The <code>anyhow</code> crate gives you one error type, <code>anyhow::Error</code>, that can hold any error. Return <code>anyhow::Result&lt;T&gt;</code> and every <code>?</code> just works, whether the error came from reqwest, serde or your own code. It feels a lot like throwing in JavaScript, but the caller can see it in the type.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+async function getPost(id: number): Promise<Post> {
+  const res = await fetch(
+    `https://jsonplaceholder.typicode.com/posts/${id}`
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()) as Post;
+}
+
+try {
+  const post = await getPost(1);
+  console.log(post.title);
+} catch (e) {
+  console.error("Request failed:", e);
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+async fn get_post(id: u32) -> anyhow::Result<Post> {
+    let url = format!("https://jsonplaceholder.typicode.com/posts/{id}");
+    let post = reqwest::get(url)
+        .await?
+        .error_for_status()?
+        .json::<Post>()
+        .await?;
+    Ok(post)
+}
+
+match get_post(1).await {
+    Ok(post) => println!("{}", post.title),
+    Err(e) => eprintln!("Request failed: {e}"),
+}
+</script>
+  </div>
+  <p>Add context to errors so the message says what you were doing. <code>with_context</code> wraps the original error with your own text.</p>
+<script type="text/x-code" data-lang="rust">
+use anyhow::Context;
+
+let post: Post = reqwest::get(&url)
+    .await
+    .with_context(|| format!("could not reach {url}"))?
+    .json()
+    .await
+    .context("the post JSON had the wrong shape")?;
+</script>
+</section>
+
+<section>
+  <h2 data-short="POST and headers">POST, headers and query parameters</h2>
+  <p>To send JSON, derive <code>Serialize</code> on a struct and pass it to <code>.json()</code>. reqwest turns it into JSON and sets the <code>Content-Type</code> header for you.</p>
+  <div class="compare stretch">
+<script type="text/x-code" data-lang="ts">
+const res = await fetch(
+  "https://jsonplaceholder.typicode.com/posts?draft=true",
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      "X-Request-Id": "abc-123",
+    },
+    body: JSON.stringify({
+      title: "Hello",
+      body: "From TypeScript",
+      userId: 1,
+    }),
+  }
+);
+const created = (await res.json()) as Post;
+console.log(created.id); // 101
+</script>
+<script type="text/x-code" data-lang="rust">
+use serde::Serialize;
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NewPost {
+    title: String,
+    body: String,
+    user_id: u32,
+}
+
+let new_post = NewPost {
+    title: "Hello".to_string(),
+    body: "From Rust".to_string(),
+    user_id: 1,
+};
+
+let created: Post = client
+    .post("https://jsonplaceholder.typicode.com/posts")
+    .query(&[("draft", "true")])   // adds ?draft=true
+    .bearer_auth(&token)           // Authorization: Bearer ...
+    .header("X-Request-Id", "abc-123")
+    .json(&new_post)               // body + Content-Type
+    .send()
+    .await?
+    .error_for_status()?
+    .json()
+    .await?;
+
+println!("{}", created.id); // 101
+</script>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>fetch option</th><th>reqwest builder method</th></tr></thead>
+      <tbody>
+        <tr><td><code>method: "POST"</code></td><td><code>client.post(url)</code>, also <code>.put</code>, <code>.patch</code>, <code>.delete</code></td></tr>
+        <tr><td><code>headers: { ... }</code></td><td><code>.header("Name", "value")</code>, once per header</td></tr>
+        <tr><td><code>Authorization: Bearer ...</code></td><td><code>.bearer_auth(token)</code></td></tr>
+        <tr><td><code>body: JSON.stringify(obj)</code></td><td><code>.json(&amp;obj)</code></td></tr>
+        <tr><td><code>body: new URLSearchParams(...)</code></td><td><code>.form(&amp;[("key", "value")])</code></td></tr>
+        <tr><td><code>?a=1&amp;b=2</code> in the URL</td><td><code>.query(&amp;[("a", "1"), ("b", "2")])</code></td></tr>
+        <tr><td><code>await res.text()</code></td><td><code>res.text().await?</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Nothing goes over the network until <code>.send()</code>. Every method before it only builds up the request.</p>
+</section>
+
+<section>
+  <h2>One client for the whole app</h2>
+  <p><code>reqwest::get</code> is handy for one request. For anything more, build one <code>reqwest::Client</code> and reuse it. The client keeps a pool of open connections, so later requests to the same server are faster. It is the same idea as an axios instance.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+import axios from "axios";
+
+const api = axios.create({
+  baseURL: "https://api.example.com",
+  timeout: 10_000,
+  headers: { Authorization: `Bearer ${token}` },
+});
+
+const { data } = await api.get<User>("/users/1");
+</script>
+<script type="text/x-code" data-lang="rust">
+use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
+use std::time::Duration;
+
+let mut headers = HeaderMap::new();
+headers.insert(
+    AUTHORIZATION,
+    HeaderValue::from_str(&format!("Bearer {token}"))?,
+);
+
+let client = reqwest::Client::builder()
+    .timeout(Duration::from_secs(10))
+    .user_agent("my-app/1.0")
+    .default_headers(headers)
+    .build()?;
+
+const BASE: &str = "https://api.example.com";
+let user: User = client
+    .get(format!("{BASE}/users/1"))
+    .send().await?
+    .json().await?;
+</script>
+  </div>
+  <ul>
+    <li>reqwest has no <code>baseURL</code> option. Keep the base in a constant and build URLs with <code>format!</code>.</li>
+    <li>The <code>timeout</code> covers the whole request. With plain <code>fetch</code> you would pass <code>signal: AbortSignal.timeout(10_000)</code>.</li>
+    <li><code>client.clone()</code> is cheap. All clones share the same connection pool. Clone it freely to pass it into functions and tasks.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Futures are lazy</h2>
+  <p>This is the biggest difference from Promises, so read it twice. A JavaScript Promise starts working the moment you create it. A Rust future does nothing at all until you <code>.await</code> it or hand it to <code>tokio::spawn</code>.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+async function load(name: string) {
+  console.log(`start ${name}`);
+  return name.toUpperCase();
+}
+
+const p = load("a");       // prints "start a" right now
+console.log("before await");
+const value = await p;
+
+// Output:
+// start a
+// before await
+</script>
+<script type="text/x-code" data-lang="rust">
+async fn load(name: &str) -> String {
+    println!("start {name}");
+    name.to_uppercase()
+}
+
+let f = load("a");         // prints nothing, nothing ran yet
+println!("before await");
+let value = f.await;       // now it prints "start a"
+
+// Output:
+// before await
+// start a
+</script>
+  </div>
+  <p>A future is a recipe, not a running job. Calling <code>load("a")</code> only writes the recipe down. <code>.await</code> cooks it.</p>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p>If you forget <code>.await</code>, the request never happens. In JavaScript a forgotten <code>await</code> still sends the request in the background. In Rust it silently sends nothing. The compiler warns you with "unused implementer of <code>Future</code> that must be used". Never ignore that warning.</p>
+  </aside>
+  <p>Laziness also means two awaits in a row run one after the other, just like in JavaScript:</p>
+<script type="text/x-code" data-lang="rust">
+// Sequential: the second request starts after the first one finishes.
+let user = get_user(1).await?;
+let posts = get_posts(1).await?;
+</script>
+  <p>To run them at the same time you need the tools in the next section.</p>
+</section>
+
+<section>
+  <h2 data-short="Promise.all and race">Running things at the same time</h2>
+
+  <h3>Promise.all becomes join! and try_join!</h3>
+  <p><code>tokio::join!</code> runs several futures at once and waits for all of them. It gives you every result, like <code>Promise.allSettled</code>. <code>tokio::try_join!</code> stops at the first error, like <code>Promise.all</code>.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+// Stops at the first rejection
+const [user, posts] = await Promise.all([
+  getUser(1),
+  getPosts(1),
+]);
+
+// Keeps every outcome
+const results = await Promise.allSettled([
+  getUser(1),
+  getPosts(1),
+]);
+</script>
+<script type="text/x-code" data-lang="rust">
+// Stops at the first Err
+let (user, posts) = tokio::try_join!(
+    get_user(1),
+    get_posts(1),
+)?;
+
+// Keeps every outcome: each one is a Result
+let (user_result, posts_result) = tokio::join!(
+    get_user(1),
+    get_posts(1),
+);
+</script>
+  </div>
+  <p><code>try_join!</code> needs every future to have the same error type. With <code>anyhow::Result</code> everywhere, that is already true.</p>
+
+  <h3>A list of futures</h3>
+  <p>The macros take a fixed number of futures. For a list built at runtime, use <code>join_all</code> or <code>try_join_all</code> from the <code>futures</code> crate.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const ids = [1, 2, 3, 4, 5];
+const posts = await Promise.all(
+  ids.map((id) => getPost(id))
+);
+</script>
+<script type="text/x-code" data-lang="rust">
+use futures::future::try_join_all;
+
+let ids = vec![1, 2, 3, 4, 5];
+let posts: Vec<Post> =
+    try_join_all(ids.iter().map(|&id| get_post(id))).await?;
+</script>
+  </div>
+
+  <h3>Promise.race becomes select!</h3>
+  <p><code>tokio::select!</code> waits for whichever future finishes first and runs that branch. A common use is a timeout.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const timeout = new Promise<never>((_, reject) =>
+  setTimeout(() => reject(new Error("too slow")), 2000)
+);
+
+try {
+  const post = await Promise.race([getPost(1), timeout]);
+  console.log("got post:", post.title);
+} catch {
+  console.log("too slow, giving up");
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+use std::time::Duration;
+
+tokio::select! {
+    post = get_post(1) => {
+        println!("got post: {}", post?.title);
+    }
+    _ = tokio::time::sleep(Duration::from_secs(2)) => {
+        println!("too slow, giving up");
+    }
+}
+</script>
+  </div>
+  <p>One nice difference: the losing future gets dropped, which cancels it. In JavaScript the losing Promise keeps running in the background, and you just stop listening.</p>
+  <p>For a plain timeout there is also a shortcut:</p>
+<script type="text/x-code" data-lang="rust">
+// The first ? is for the timeout, the second ? is for the request itself.
+let post = tokio::time::timeout(Duration::from_secs(2), get_post(1)).await??;
+</script>
+</section>
+
+<section>
+  <h2>Timers and background tasks</h2>
+
+  <h3>setTimeout and setInterval</h3>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+// wait one second
+await new Promise((r) => setTimeout(r, 1000));
+
+// run something later
+setTimeout(() => console.log("later"), 1000);
+
+// repeat forever
+setInterval(() => console.log("tick"), 1000);
+</script>
+<script type="text/x-code" data-lang="rust">
+use std::time::Duration;
+
+// wait one second
+tokio::time::sleep(Duration::from_millis(1000)).await;
+
+// run something later
+tokio::spawn(async {
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    println!("later");
+});
+
+// repeat forever
+let mut interval = tokio::time::interval(Duration::from_secs(1));
+loop {
+    interval.tick().await;
+    println!("tick");
+}
+</script>
+  </div>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p>Do not use <code>std::thread::sleep</code> inside async code. It freezes the whole worker thread, and every other task on that thread stops with it. Always use <code>tokio::time::sleep(...).await</code>. The same goes for other blocking work like big file reads or heavy math. Move those into <code>tokio::task::spawn_blocking</code>.</p>
+  </aside>
+
+  <h3>tokio::spawn for background work</h3>
+  <p><code>tokio::spawn</code> starts a future right away as its own task, and it runs even if you never wait for it. That is the closest thing to calling an async function without <code>await</code> in JavaScript. It returns a handle you can await later to get the result.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const pending = getPost(1);   // starts now
+
+doOtherWork();
+
+const post = await pending;
+</script>
+<script type="text/x-code" data-lang="rust">
+let handle = tokio::spawn(async move {
+    get_post(1).await
+});
+
+do_other_work();
+
+// first ? : the task panicked
+// second ? : the request failed
+let post = handle.await??;
+</script>
+  </div>
+  <p>A spawned task can outlive the function that started it, so it cannot borrow local variables. It must own everything it uses. That is why you write <code>async move</code> and clone what you need first.</p>
+<script type="text/x-code" data-lang="rust">
+let client = reqwest::Client::new();
+
+for id in 1..=3 {
+    let client = client.clone();   // each task gets its own handle
+    tokio::spawn(async move {
+        let url = format!("https://jsonplaceholder.typicode.com/posts/{id}");
+        match client.get(url).send().await {
+            Ok(res) => println!("post {id}: {}", res.status()),
+            Err(e) => eprintln!("post {id} failed: {e}"),
+        }
+    });
+}
+</script>
+
+  <h3>Limiting how many run at once</h3>
+  <p>Firing 1,000 requests at once can get you rate limited. In Node you might reach for p-limit. In Rust, turn the list into a stream and use <code>buffer_unordered</code>.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+import pLimit from "p-limit";
+
+const limit = pLimit(5);
+const ids = Array.from({ length: 100 }, (_, i) => i + 1);
+
+const posts = await Promise.all(
+  ids.map((id) => limit(() => getPost(id)))
+);
+</script>
+<script type="text/x-code" data-lang="rust">
+use futures::stream::{self, StreamExt};
+
+let ids: Vec<u32> = (1..=100).collect();
+
+let results: Vec<anyhow::Result<Post>> = stream::iter(ids)
+    .map(|id| get_post(id))
+    .buffer_unordered(5)    // at most 5 requests at once
+    .collect()
+    .await;
+</script>
+  </div>
+  <p><code>buffer_unordered</code> gives results in the order they finish. Use <code>buffered(5)</code> if you need them in the original order.</p>
+</section>
+
+<section>
+  <h2 data-short="Untyped JSON">Untyped JSON and JSON strings</h2>
+  <p>Sometimes you do not want a struct. Maybe you only need one deep field, or the shape changes a lot. <code>serde_json::Value</code> holds any JSON, like <code>any</code> from <code>res.json()</code>.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const data: any = await res.json();
+console.log(data.user?.name);
+
+const payload = {
+  name: "Ana",
+  tags: ["admin"],
+  age: 30,
+};
+</script>
+<script type="text/x-code" data-lang="rust">
+use serde_json::{json, Value};
+
+let data: Value = res.json().await?;
+if let Some(name) = data["user"]["name"].as_str() {
+    println!("{name}");
+}
+
+let payload = json!({
+    "name": "Ana",
+    "tags": ["admin"],
+    "age": 30,
+});
+</script>
+  </div>
+  <p>Indexing a <code>Value</code> with a key that does not exist gives <code>Value::Null</code> instead of crashing. So <code>data["user"]["name"]</code> works like <code>data.user?.name</code>. Then <code>.as_str()</code>, <code>.as_i64()</code> or <code>.as_array()</code> give you an <code>Option</code> with the real value. The <code>json!</code> macro lets you write JSON almost exactly like a JavaScript object.</p>
+
+  <h3>JSON.stringify and JSON.parse</h3>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const text = JSON.stringify(post);
+const pretty = JSON.stringify(post, null, 2);
+
+const back = JSON.parse(text) as Post;
+</script>
+<script type="text/x-code" data-lang="rust">
+// Post needs #[derive(Serialize, Deserialize)]
+let text = serde_json::to_string(&post)?;
+let pretty = serde_json::to_string_pretty(&post)?;
+
+let back: Post = serde_json::from_str(&text)?;
+</script>
+  </div>
+  <p>Both directions return a <code>Result</code>. Parsing can fail on bad input, and <code>from_str</code> checks the shape the same way <code>.json()</code> does.</p>
+</section>
+
+<section>
+  <h2 data-short="axum vs Express">Building an API: Express vs axum</h2>
+  <p>You know how to write API routes in Express or Next.js. axum is the most popular Rust web framework, and it is built on tokio. Add <code>axum = "0.8"</code> to your dependencies next to tokio and serde.</p>
+  <div class="compare stretch">
+<script type="text/x-code" data-lang="ts" data-title="server.ts">
+import express from "express";
+
+const app = express();
+app.use(express.json());
+
+app.get("/", (req, res) => {
+  res.send("Hello");
+});
+
+app.get("/users/:id", (req, res) => {
+  res.json({ id: Number(req.params.id), name: "Ana" });
+});
+
+app.post("/users", (req, res) => {
+  res.status(201).json({ id: 1, name: req.body.name });
+});
+
+app.listen(3000, () => {
+  console.log("listening on 3000");
+});
+</script>
+<script type="text/x-code" data-lang="rust" data-title="src/main.rs">
+use axum::{
+    extract::Path,
+    http::StatusCode,
+    routing::{get, post},
+    Json, Router,
+};
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize)]
+struct User {
+    id: u32,
+    name: String,
+}
+
+#[derive(Deserialize)]
+struct NewUser {
+    name: String,
+}
+
+async fn hello() -> &'static str {
+    "Hello"
+}
+
+async fn get_user(Path(id): Path<u32>) -> Json<User> {
+    Json(User { id, name: "Ana".to_string() })
+}
+
+async fn create_user(
+    Json(input): Json<NewUser>,
+) -> (StatusCode, Json<User>) {
+    let user = User { id: 1, name: input.name };
+    (StatusCode::CREATED, Json(user))
+}
+
+#[tokio::main]
+async fn main() {
+    let app = Router::new()
+        .route("/", get(hello))
+        .route("/users/{id}", get(get_user))
+        .route("/users", post(create_user));
+
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
+        .await
+        .unwrap();
+    println!("listening on 3000");
+    axum::serve(listener, app).await.unwrap();
+}
+</script>
+  </div>
+  <ul>
+    <li>A handler is a plain <code>async fn</code>. Its parameters say what it needs from the request. <code>Path&lt;u32&gt;</code> reads the <code>{id}</code> part of the URL. <code>Json&lt;NewUser&gt;</code> reads and checks the body.</li>
+    <li>If the id is not a number or the body has the wrong shape, axum answers with a 400 or 422 error before your handler runs. You do not write that check.</li>
+    <li>Whatever the handler returns becomes the response. A <code>&amp;str</code> becomes text, <code>Json(x)</code> becomes JSON, and a tuple with a <code>StatusCode</code> sets the status.</li>
+    <li>A Next.js file at <code>app/api/users/[id]/route.ts</code> with a <code>GET</code> export maps to <code>.route("/users/{id}", get(get_user))</code>. axum 0.8 writes path parameters as <code>{id}</code>. Older tutorials use <code>:id</code>, which no longer works.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>A complete example</h2>
+  <p>This program loads a user and their posts at the same time, with a timeout and readable errors. It puts together most of this lesson. Paste it into <code>src/main.rs</code> of a project with the <code>Cargo.toml</code> from the top, then run <code>cargo run</code>.</p>
+<script type="text/x-code" data-lang="rust" data-title="src/main.rs">
+use std::time::Duration;
+
+use anyhow::{Context, Result};
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
+
+const BASE: &str = "https://jsonplaceholder.typicode.com";
+
+#[derive(Debug, Deserialize)]
+struct User {
+    name: String,
+    email: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct Post {
+    id: u32,
+    title: String,
+}
+
+// One generic helper for every GET request in the app.
+async fn get_json<T: DeserializeOwned>(client: &reqwest::Client, path: &str) -> Result<T> {
+    let url = format!("{BASE}{path}");
+    let value = client
+        .get(&url)
+        .send()
+        .await
+        .with_context(|| format!("request to {url} failed"))?
+        .error_for_status()?
+        .json::<T>()
+        .await
+        .with_context(|| format!("unexpected JSON from {url}"))?;
+    Ok(value)
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()?;
+
+    let user_id = 1;
+    let user_path = format!("/users/{user_id}");
+    let posts_path = format!("/posts?userId={user_id}");
+
+    // Both requests run at the same time, like Promise.all.
+    let (user, posts) = tokio::try_join!(
+        get_json::<User>(&client, &user_path),
+        get_json::<Vec<Post>>(&client, &posts_path),
+    )?;
+
+    println!("{} <{}>", user.name, user.email);
+    println!("{} posts, first five:", posts.len());
+    for post in posts.iter().take(5) {
+        println!("  #{} {}", post.id, post.title);
+    }
+
+    Ok(())
+}
+</script>
+<script type="text/x-code" data-lang="output">
+Leanne Graham <Sincere@april.biz>
+10 posts, first five:
+  #1 sunt aut facere repellat provident occaecati excepturi optio reprehenderit
+  #2 qui est esse
+  #3 ea molestias quasi exercitationem repellat qui ipsa sit aut
+  #4 eum et est occaecati
+  #5 nesciunt quas odio
+</script>
+  <p>The helper <code>get_json</code> is generic over <code>T</code>, the type you want back. <code>DeserializeOwned</code> means "any type serde can build from JSON". You call it with the turbofish, <code>get_json::&lt;User&gt;(...)</code>, to say which type you want. <a href="traits.html">Lesson 11</a> explains generics and trait bounds like this one.</p>
+</section>
+
+<section>
+  <h2>Check yourself</h2>
+  <div class="quiz">
+    <details>
+      <summary>What happens when you write <code>let f = get_post(1);</code> and never use <code>f</code>?</summary>
+      <div><p>Nothing. A Rust future is lazy, so no request is sent. The compiler warns that the future is unused. Add <code>.await</code>, or pass it to <code>tokio::spawn</code> to run it in the background.</p></div>
+    </details>
+    <details>
+      <summary>Does reqwest return an <code>Err</code> when the server answers 404?</summary>
+      <div><p>No. Like <code>fetch</code>, it treats any answer as a success. Call <code>.error_for_status()?</code> or check <code>res.status().is_success()</code>.</p></div>
+    </details>
+    <details>
+      <summary>What is the Rust version of <code>await Promise.all([a(), b()])</code>?</summary>
+      <div><p><code>tokio::try_join!(a(), b())?</code>. For a list built at runtime, use <code>futures::future::try_join_all</code>.</p></div>
+    </details>
+    <details>
+      <summary>Why does <code>res.json() as Post[]</code> not protect you, while serde does?</summary>
+      <div><p>TypeScript removes types before the code runs, so <code>as</code> checks nothing at runtime. serde checks every field while it parses and returns an error when the JSON does not match the struct.</p></div>
+    </details>
+    <details>
+      <summary>Which attribute maps the JSON key <code>userId</code> to the field <code>user_id</code>?</summary>
+      <div><p><code>#[serde(rename_all = "camelCase")]</code> on the struct. For a single odd key, use <code>#[serde(rename = "...")]</code> on the field.</p></div>
+    </details>
+    <details>
+      <summary>Why is <code>std::thread::sleep</code> a bad idea inside an async function?</summary>
+      <div><p>It blocks the worker thread, so every other task on that thread stops too. Use <code>tokio::time::sleep(duration).await</code>, which lets other tasks run while you wait.</p></div>
+    </details>
+  </div>
+</section>
+
+</main>
+<script src="assets/app.js"></script>
+</body>
+</html>

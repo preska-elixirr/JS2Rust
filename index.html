@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rust from JS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<script>try{var t=localStorage.getItem('rjs-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body data-page="index.html">
+<main class="lesson" data-no-toc>
+
+<header class="hero">
+  <p class="eyebrow">A guide for JavaScript and TypeScript developers</p>
+  <h1>Learn Rust by comparing it to what you <em>already know</em></h1>
+  <p class="lead">Every idea in this guide sits next to the JavaScript or TypeScript code you would write today. You read the left side to remember what you know, and the right side to see how Rust does the same job.</p>
+  <div class="hero-actions">
+    <a class="btn btn-primary" href="setup.html">Start lesson 1: setup</a>
+    <a class="btn" href="cheatsheet.html">Open the cheat sheet</a>
+  </div>
+</header>
+
+<section>
+  <h2>A first look</h2>
+  <p>Here is the same small program in both languages. It adds up the even numbers in a list. You can probably read most of the Rust version already.</p>
+  <div class="compare stretch">
+<script type="text/x-code" data-lang="ts" data-title="sum.ts">
+const numbers = [1, 2, 3, 4, 5, 6];
+
+const total = numbers
+  .filter((n) => n % 2 === 0)
+  .reduce((sum, n) => sum + n, 0);
+
+console.log(`Sum of even numbers: ${total}`);
+</script>
+<script type="text/x-code" data-lang="rust" data-title="main.rs">
+fn main() {
+    let numbers = vec![1, 2, 3, 4, 5, 6];
+
+    let total: i32 = numbers
+        .iter()
+        .filter(|n| *n % 2 == 0)
+        .sum();
+
+    println!("Sum of even numbers: {total}");
+}
+</script>
+  </div>
+  <p>Some things look familiar: <code>let</code>, method chains, <code>filter</code>, and arrow-like functions. Some things are new: <code>fn main()</code>, <code>vec!</code>, <code>.iter()</code>, the <code>|n|</code> closure syntax, and the <code>*n</code>. Every one of these gets its own explanation later.</p>
+</section>
+
+<section>
+  <h2>How this guide works</h2>
+  <ul>
+    <li>Code panels with a yellow <span class="lang js">JS</span> or <span class="lang js">TS</span> badge show JavaScript or TypeScript. Panels with an orange <span class="lang rs">RS</span> badge show Rust.</li>
+    <li>Side by side panels do the same thing. On a phone they stack, JavaScript first.</li>
+    <li>Blue boxes give you a mental model. Red boxes warn you about a trap that catches JavaScript developers. Green boxes are tips.</li>
+    <li>Each lesson ends with a few "check yourself" questions. Click a question to see the answer.</li>
+    <li>Click "Mark lesson as done" at the end of a lesson. The sidebar keeps your progress in this browser.</li>
+  </ul>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p>You learn Rust much faster if you type the examples yourself. Lesson 1 shows how to install Rust and run code in under ten minutes. If you do not want to install anything yet, paste the Rust examples into the <a href="https://play.rust-lang.org" target="_blank" rel="noopener">Rust Playground</a> in your browser.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>How your code runs</h2>
+  <p>This is the biggest difference, and most of the other differences come from it. JavaScript is run by an engine (V8 in Chrome and Node). Rust is turned into a program that your computer runs directly.</p>
+  <figure class="diagram">
+    <svg viewBox="0 0 830 250" role="img" aria-label="JavaScript goes through a bundler then an engine at runtime. Rust goes through the compiler and becomes a native program.">
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="d-arrow"/>
+        </marker>
+      </defs>
+
+      <text x="0" y="63" font-size="14" font-weight="600" class="d-t-js">JS / TS</text>
+      <rect x="90" y="32" width="110" height="56" rx="8" class="d-js"/>
+      <text x="145" y="65" font-size="13" text-anchor="middle" class="d-mono">app.ts</text>
+      <line x1="200" y1="60" x2="228" y2="60" class="d-line" stroke-width="1.5" marker-end="url(#arr)"/>
+      <rect x="230" y="32" width="170" height="56" rx="8" class="d-box"/>
+      <text x="315" y="56" font-size="13" text-anchor="middle">tsc or bundler</text>
+      <text x="315" y="74" font-size="12" text-anchor="middle" class="d-muted">removes the types</text>
+      <line x1="400" y1="60" x2="428" y2="60" class="d-line" stroke-width="1.5" marker-end="url(#arr)"/>
+      <rect x="430" y="32" width="110" height="56" rx="8" class="d-js"/>
+      <text x="485" y="65" font-size="13" text-anchor="middle" class="d-mono">app.js</text>
+      <line x1="540" y1="60" x2="568" y2="60" class="d-line" stroke-width="1.5" marker-end="url(#arr)"/>
+      <rect x="570" y="32" width="250" height="56" rx="8" class="d-box"/>
+      <text x="695" y="56" font-size="13" text-anchor="middle">Node or browser engine</text>
+      <text x="695" y="74" font-size="12" text-anchor="middle" class="d-muted">JIT compiler + garbage collector</text>
+      <text x="695" y="110" font-size="12" text-anchor="middle" class="d-t-warn">Type errors and crashes can still happen here</text>
+
+      <text x="0" y="173" font-size="14" font-weight="600" class="d-t-rs">Rust</text>
+      <rect x="90" y="142" width="110" height="56" rx="8" class="d-rs"/>
+      <text x="145" y="175" font-size="13" text-anchor="middle" class="d-mono">main.rs</text>
+      <line x1="200" y1="170" x2="228" y2="170" class="d-line" stroke-width="1.5" marker-end="url(#arr)"/>
+      <rect x="230" y="142" width="170" height="56" rx="8" class="d-box"/>
+      <text x="315" y="166" font-size="13" text-anchor="middle">cargo build</text>
+      <text x="315" y="184" font-size="12" text-anchor="middle" class="d-muted">type check + borrow check</text>
+      <line x1="400" y1="170" x2="428" y2="170" class="d-line" stroke-width="1.5" marker-end="url(#arr)"/>
+      <rect x="430" y="142" width="110" height="56" rx="8" class="d-rs"/>
+      <text x="485" y="166" font-size="13" text-anchor="middle">native</text>
+      <text x="485" y="184" font-size="13" text-anchor="middle">program</text>
+      <line x1="540" y1="170" x2="568" y2="170" class="d-line" stroke-width="1.5" marker-end="url(#arr)"/>
+      <rect x="570" y="142" width="250" height="56" rx="8" class="d-box"/>
+      <text x="695" y="166" font-size="13" text-anchor="middle">Runs directly on the OS</text>
+      <text x="695" y="184" font-size="12" text-anchor="middle" class="d-muted">no engine, no garbage collector</text>
+      <text x="315" y="220" font-size="12" text-anchor="middle" class="d-t-tip">Most mistakes stop the build here,</text>
+      <text x="315" y="236" font-size="12" text-anchor="middle" class="d-t-tip">before anyone runs the program</text>
+    </svg>
+    <figcaption>TypeScript checks your types, then throws them away. Rust keeps checking until the very end and refuses to build a program it thinks is wrong.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>The big differences</h2>
+  <p>Keep these in the back of your head. Each one has a full lesson.</p>
+  <ul class="diff-list">
+    <li>
+      <div><h3><span class="lang js">JS</span> Types are optional</h3><p>TypeScript types are a layer on top. You can escape with <code>any</code>, and the types are gone at runtime.</p></div>
+      <div><h3><span class="lang rs">RS</span> Types are the law</h3><p>Every value has one exact type. There is no <code>any</code>. The compiler infers a lot, so you write fewer types than you expect.</p></div>
+    </li>
+    <li>
+      <div><h3><span class="lang js">JS</span> Mutable by default</h3><p><code>const</code> stops reassignment, but you can still change what is inside an object or array.</p></div>
+      <div><h3><span class="lang rs">RS</span> Immutable by default</h3><p>Nothing changes unless you write <code>mut</code>. That covers the fields and items inside the value too.</p></div>
+    </li>
+    <li>
+      <div><h3><span class="lang js">JS</span> Garbage collector</h3><p>The engine frees memory "some time later" when nothing points to it. You never think about it.</p></div>
+      <div><h3><span class="lang rs">RS</span> Ownership</h3><p>Every value has one owner. When the owner goes out of scope, Rust frees the value right there. <a href="ownership.html">Lesson 5</a> covers this.</p></div>
+    </li>
+    <li>
+      <div><h3><span class="lang js">JS</span> null and undefined</h3><p>Any value can secretly be missing. "Cannot read properties of undefined" is the result.</p></div>
+      <div><h3><span class="lang rs">RS</span> Option</h3><p>There is no null. A value that can be missing has the type <code>Option&lt;T&gt;</code>, and the compiler makes you handle the empty case.</p></div>
+    </li>
+    <li>
+      <div><h3><span class="lang js">JS</span> throw and try / catch</h3><p>Any function can throw. You cannot see that from its type.</p></div>
+      <div><h3><span class="lang rs">RS</span> Result</h3><p>Functions that can fail return <code>Result&lt;T, E&gt;</code>. The error is part of the return type, so you always know.</p></div>
+    </li>
+    <li>
+      <div><h3><span class="lang js">JS</span> Built-in event loop</h3><p><code>async</code> and <code>fetch</code> work out of the box in Node and the browser.</p></div>
+      <div><h3><span class="lang rs">RS</span> Pick a runtime</h3><p>The language has <code>async</code> and <code>await</code>, but you add a runtime library (almost always <code>tokio</code>) to run them.</p></div>
+    </li>
+  </ul>
+</section>
+
+<section>
+  <h2>Course map</h2>
+  <p>The lessons build on each other, so go in order the first time. Lessons 2 to 4 feel familiar. Lesson 5 is the new idea that makes Rust Rust. Take your time there.</p>
+  <div class="grid-cards" id="lesson-grid"></div>
+</section>
+
+<section>
+  <h2>Words you will see</h2>
+  <p>A quick glossary. Do not memorize it. Come back when a word confuses you.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Rust word</th><th>Closest JS idea</th><th>What it means</th></tr></thead>
+      <tbody>
+        <tr><td>Cargo</td><td>npm + package.json scripts</td><td>The build tool and package manager. You use it for almost everything.</td></tr>
+        <tr><td>crate</td><td>an npm package</td><td>A library or a program. Public crates live on crates.io.</td></tr>
+        <tr><td>rustc</td><td>tsc</td><td>The compiler. Cargo calls it for you, so you rarely run it yourself.</td></tr>
+        <tr><td>macro</td><td>none, really</td><td>Code that writes code. You spot them by the <code>!</code>, like <code>println!</code> and <code>vec!</code>.</td></tr>
+        <tr><td>struct</td><td>an object type or class</td><td>A named group of fields.</td></tr>
+        <tr><td>impl</td><td>class methods</td><td>The block where you add methods to a struct or enum.</td></tr>
+        <tr><td>enum</td><td>a union type</td><td>A type that is one of several variants. Each variant can carry data.</td></tr>
+        <tr><td>trait</td><td>an interface</td><td>A set of methods a type promises to have.</td></tr>
+        <tr><td>ownership</td><td>none</td><td>The rule that each value has exactly one owner, which frees it.</td></tr>
+        <tr><td>borrow</td><td>passing a reference</td><td>Using a value through a reference (<code>&amp;x</code>) without taking ownership.</td></tr>
+        <tr><td>Vec</td><td>an array</td><td>A list that can grow. The everyday list type.</td></tr>
+        <tr><td>slice</td><td><code>arr.slice()</code> without the copy</td><td>A view into part of a list or string.</td></tr>
+        <tr><td>unwrap</td><td>the <code>!</code> non-null assertion</td><td>"Give me the value, crash if there is none." Fine in examples, risky in real code.</td></tr>
+        <tr><td>panic</td><td>an uncaught exception</td><td>The program stops with an error message.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>One piece of advice for week one</h2>
+  <p>The Rust compiler will reject your code a lot at first. That is normal, and it is not you being bad at this. JavaScript lets you run broken code and find out later. Rust moves all of that pain to compile time.</p>
+  <p>Read the error messages to the end. They are long because they are useful. Most of them point at the exact spot and often say "help: consider doing X". In many cases X is the fix.</p>
+  <script type="text/x-code" data-lang="output" data-title="A real compiler error">
+error[E0384]: cannot assign twice to immutable variable `count`
+ --> src/main.rs:3:5
+  |
+2 |     let count = 1;
+  |         ----- first assignment to `count`
+3 |     count = 2;
+  |     ^^^^^^^^^ cannot assign twice to immutable variable
+  |
+help: consider making this binding mutable
+  |
+2 |     let mut count = 1;
+  |         +++
+  </script>
+  <p>Ready? <a href="setup.html">Start with lesson 1</a>.</p>
+</section>
+
+</main>
+<script src="assets/app.js"></script>
+</body>
+</html>

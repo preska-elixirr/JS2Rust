@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Objects, structs, maps · Rust from JS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<script>try{var t=localStorage.getItem('rjs-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body data-page="objects.html">
+<main class="lesson">
+
+<header class="lesson-head">
+  <p class="eyebrow">Lesson 08 · Data</p>
+  <h1>Objects, structs, maps</h1>
+  <p class="lead">JavaScript objects do two jobs. Sometimes they are records with known fields, and sometimes they are bags of keys. Rust splits these jobs: a struct for records, a HashMap for key-value bags.</p>
+</header>
+
+<div class="learn">
+  <p>You will learn</p>
+  <ul>
+    <li>How a TypeScript <code>interface</code> and an object literal become a <code>struct</code></li>
+    <li>How a <code>class</code> becomes a struct plus an <code>impl</code> block, and what <code>&amp;self</code> means</li>
+    <li>How to print, copy, compare and destructure structs</li>
+    <li>How <code>Map</code> and <code>Record&lt;string, number&gt;</code> become <code>HashMap</code></li>
+  </ul>
+</div>
+
+<section>
+  <h2 data-short="Structs">Objects become structs</h2>
+  <p>In JavaScript you can write an object literal anywhere, with any fields. In TypeScript you usually describe its shape with an <code>interface</code> or <code>type</code>. Rust always wants the shape first. You declare a <code>struct</code>, then you create values of it.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+interface User {
+  name: string;
+  email: string;
+  age: number;
+  active: boolean;
+}
+
+const user: User = {
+  name: "Ana",
+  email: "ana@example.com",
+  age: 30,
+  active: true,
+};
+
+console.log(user.name);   // "Ana"
+</script>
+<script type="text/x-code" data-lang="rust">
+struct User {
+    name: String,
+    email: String,
+    age: u32,
+    active: bool,
+}
+
+let user = User {
+    name: String::from("Ana"),
+    email: String::from("ana@example.com"),
+    age: 30,
+    active: true,
+};
+
+println!("{}", user.name); // Ana
+</script>
+  </div>
+  <p>The syntax is close. The rules are not:</p>
+  <ul>
+    <li>You must set every field when you create a value. There is no "missing" field.</li>
+    <li>You cannot add a field later. <code>user.nickname = "A"</code> fails with <code>error[E0609]: no field `nickname` on type `User`</code>.</li>
+    <li>The struct name goes in front of the braces: <code>User { ... }</code>. That is how Rust knows the type.</li>
+    <li>Text fields are usually <code>String</code>, not <code>&amp;str</code>, so the struct owns its text. <a href="strings.html">Lesson 6</a> explains why.</li>
+  </ul>
+  <aside class="callout note">
+    <p class="callout-title">Mental model</p>
+    <p>A struct is a TypeScript interface that also exists at runtime. The compiler knows the exact fields and their sizes, so a struct has no hidden key lookup. Reading <code>user.age</code> is as fast as reading a local variable.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Creating values in functions</h2>
+  <p>The field init shorthand from JavaScript works the same way. If a variable has the same name as the field, write it once.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+function createUser(name: string, email: string): User {
+  return { name, email, age: 0, active: true };
+}
+
+const u = createUser("Bo", "bo@example.com");
+</script>
+<script type="text/x-code" data-lang="rust">
+fn create_user(name: String, email: String) -> User {
+    User { name, email, age: 0, active: true }
+}
+
+let u = create_user("Bo".to_string(), "bo@example.com".to_string());
+</script>
+  </div>
+  <p>The Rust function has no <code>return</code> and no semicolon after the struct. The last expression in a function is its return value. <a href="functions.html">Lesson 3</a> covers this.</p>
+</section>
+
+<section>
+  <h2>Changing fields needs mut</h2>
+  <p>You saw this in <a href="variables.html">lesson 2</a>. A <code>const</code> object in JavaScript still lets you change its fields. A Rust struct without <code>mut</code> is frozen. You cannot mark a single field as mutable. <code>mut</code> goes on the whole variable.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const user = { name: "Ana", age: 30 };
+user.age = 31;          // allowed
+
+Object.freeze(user);
+user.age = 32;          // silently ignored
+                        // (TypeError in strict mode)
+</script>
+<script type="text/x-code" data-lang="rust">
+let user = User { /* ... */ };
+user.age = 31;
+// error[E0594]: cannot assign to `user.age`,
+// as `user` is not declared as mutable
+
+let mut user = User { /* ... */ };
+user.age = 31;          // fine
+</script>
+  </div>
+</section>
+
+<section>
+  <h2 data-short="Struct update">Copying with changes: spread vs struct update</h2>
+  <p>In React you copy objects with changes all the time: <code>{ ...user, email }</code>. Rust has the same idea, called struct update syntax. The <code>..other</code> part must come last.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const updated = {
+  ...user,
+  email: "new@example.com",
+};
+
+// `user` is unchanged and still usable
+console.log(user.name, updated.name);
+</script>
+<script type="text/x-code" data-lang="rust">
+let updated = User {
+    email: String::from("new@example.com"),
+    ..user
+};
+
+// user.name was moved into `updated`
+println!("{}", updated.name);
+</script>
+  </div>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p>Spread in JavaScript copies. <code>..user</code> in Rust moves the fields it takes. Here <code>name</code> is a <code>String</code>, so it moves into <code>updated</code>, and <code>user.name</code> is no longer usable. Using <code>user</code> as a whole now fails with "borrow of partially moved value: `user`". Fields that are cheap to copy, like <code>age</code> and <code>active</code>, are copied instead. If you need to keep the original, write <code>..user.clone()</code>. <a href="ownership.html">Lesson 5</a> explains moves.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="Printing and derive">Printing, comparing and cloning with derive</h2>
+  <p><code>console.log(user)</code> prints any object. Rust does not know how to print your struct until you ask for it. Try it and you get an error.</p>
+<script type="text/x-code" data-lang="output" data-title="println!(&quot;{}&quot;, user)">
+error[E0277]: `User` doesn't implement `std::fmt::Display`
+</script>
+  <p>The fix is one line above the struct: <code>#[derive(Debug)]</code>. A derive tells the compiler to write standard code for you. Then you print with <code>{:?}</code>, or <code>{:#?}</code> for the pretty multi-line version.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+console.log(user);
+console.log(JSON.stringify(user, null, 2));
+</script>
+<script type="text/x-code" data-lang="rust">
+#[derive(Debug)]
+struct User {
+    name: String,
+    email: String,
+    age: u32,
+    active: bool,
+}
+
+println!("{:?}", user);   // one line
+println!("{:#?}", user);  // pretty, one field per line
+dbg!(&user);              // prints file, line and value
+</script>
+  </div>
+<script type="text/x-code" data-lang="output">
+User { name: "Ana", email: "ana@example.com", age: 30, active: true }
+User {
+    name: "Ana",
+    email: "ana@example.com",
+    age: 30,
+    active: true,
+}
+</script>
+
+  <h3>The derives you will use most</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Derive</th><th>What you get</th><th>JavaScript habit it replaces</th></tr></thead>
+      <tbody>
+        <tr><td><code>Debug</code></td><td>Print with <code>{:?}</code> and <code>dbg!</code></td><td><code>console.log(obj)</code></td></tr>
+        <tr><td><code>Clone</code></td><td>A deep copy with <code>.clone()</code></td><td><code>structuredClone(obj)</code></td></tr>
+        <tr><td><code>PartialEq</code></td><td>Compare with <code>==</code>, field by field</td><td>A hand-written <code>isEqual</code> or lodash <code>_.isEqual</code></td></tr>
+        <tr><td><code>Default</code></td><td><code>User::default()</code> with zero, empty and false values</td><td>A <code>defaultUser</code> object you spread from</td></tr>
+        <tr><td><code>Copy</code></td><td>Copied instead of moved. Only for small structs whose fields are all <code>Copy</code> (numbers, bools, chars)</td><td>How numbers behave in JS</td></tr>
+        <tr><td><code>Hash</code>, <code>Eq</code></td><td>Use the struct as a <code>HashMap</code> key</td><td>Stringifying an object to use it as a key</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Equality compares values, not references</h3>
+  <div class="compare">
+<script type="text/x-code" data-lang="js">
+const a = { x: 1, y: 2 };
+const b = { x: 1, y: 2 };
+
+console.log(a === b);   // false: two different objects
+</script>
+<script type="text/x-code" data-lang="rust">
+#[derive(Debug, Clone, PartialEq)]
+struct Point { x: i32, y: i32 }
+
+let a = Point { x: 1, y: 2 };
+let b = Point { x: 1, y: 2 };
+
+println!("{}", a == b); // true: same field values
+</script>
+  </div>
+
+  <h3>Custom text, like toString()</h3>
+  <p><code>{}</code> needs the <code>Display</code> trait. Nothing derives it, because only you know how your type should look to a user. You write it by hand.</p>
+<script type="text/x-code" data-lang="rust">
+use std::fmt;
+
+impl fmt::Display for User {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} <{}>", self.name, self.email)
+    }
+}
+
+println!("{user}");           // Ana <ana@example.com>
+let text = user.to_string();  // Display also gives you .to_string()
+</script>
+</section>
+
+<section>
+  <h2 data-short="Methods">Classes become struct + impl</h2>
+  <p>A JavaScript class bundles data and methods in one block. Rust keeps them apart. The <code>struct</code> holds the data. An <code>impl</code> block (short for implementation) holds the methods.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+class Counter {
+  private count: number;
+
+  constructor(start: number) {
+    this.count = start;
+  }
+
+  static zero(): Counter {
+    return new Counter(0);
+  }
+
+  get(): number {
+    return this.count;
+  }
+
+  increment(): void {
+    this.count += 1;
+  }
+}
+
+const c = new Counter(5);
+c.increment();
+console.log(c.get()); // 6
+</script>
+<script type="text/x-code" data-lang="rust">
+struct Counter {
+    count: i32,
+}
+
+impl Counter {
+    fn new(start: i32) -> Self {
+        Self { count: start }
+    }
+
+    fn zero() -> Self {
+        Self::new(0)
+    }
+
+    fn get(&self) -> i32 {
+        self.count
+    }
+
+    fn increment(&mut self) {
+        self.count += 1;
+    }
+}
+
+let mut c = Counter::new(5);
+c.increment();
+println!("{}", c.get()); // 6
+</script>
+  </div>
+  <ul>
+    <li>Rust has no <code>constructor</code> and no <code>new</code> keyword. <code>fn new</code> is a normal function. Everyone names it <code>new</code> by convention.</li>
+    <li><code>Self</code> (capital S) means "the type this impl block is for". Here it is <code>Counter</code>.</li>
+    <li><code>self</code> (small s) is like <code>this</code>, but you must list it as the first parameter, and you always write <code>self.count</code>.</li>
+    <li>Functions without <code>self</code> are called associated functions. They work like <code>static</code> methods. You call them with <code>::</code>, as in <code>Counter::new(5)</code>.</li>
+    <li>Methods with <code>self</code> are called with a dot, as in <code>c.increment()</code>.</li>
+  </ul>
+
+  <h3>&amp;self, &amp;mut self and self</h3>
+  <p>The first parameter says what the method does with the struct. This is how Rust knows, at compile time, which methods change things.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>First parameter</th><th>Plain meaning</th><th>Caller needs</th><th>Typical use</th></tr></thead>
+      <tbody>
+        <tr><td><code>&amp;self</code></td><td>"Let me look at you."</td><td>Any variable</td><td>Getters, calculations, formatting</td></tr>
+        <tr><td><code>&amp;mut self</code></td><td>"Let me change you."</td><td>A <code>let mut</code> variable</td><td>Setters, push, increment</td></tr>
+        <tr><td><code>self</code></td><td>"Give yourself to me." The caller cannot use the value afterwards.</td><td>Any variable, which is then used up</td><td>Converting into something else, finishing a builder</td></tr>
+        <tr><td>no self</td><td>Not a method. A function that lives in the type's namespace.</td><td>Nothing</td><td>Constructors like <code>new</code>, helpers</td></tr>
+      </tbody>
+    </table>
+  </div>
+<script type="text/x-code" data-lang="rust">
+impl User {
+    // takes ownership of the user and hands back one field
+    fn into_email(self) -> String {
+        self.email
+    }
+}
+
+let email = user.into_email();
+// println!("{}", user.name);
+// error[E0382]: borrow of moved value: `user`
+</script>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p>Rust has no getter or setter keywords. Write plain methods. The convention is <code>fn count(&amp;self)</code> for a getter (no <code>get_</code> prefix) and <code>fn set_count(&amp;mut self, value: i32)</code> for a setter. You can also split methods across several <code>impl</code> blocks for the same struct.</p>
+  </aside>
+  <aside class="callout note">
+    <p class="callout-title">Mental model</p>
+    <p>Struct fields are private by default. Code outside the module (roughly, outside the file) cannot read them. Add <code>pub</code> to a field or method to make it public, like TypeScript's <code>public</code>. <a href="modules.html">Lesson 12</a> covers modules.</p>
+  </aside>
+</section>
+
+<section>
+  <h2 data-short="No inheritance">No inheritance: use composition</h2>
+  <p>Rust has no <code>extends</code>. A struct cannot inherit fields or methods from another struct. You put one struct inside another instead, and forward the calls you need.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+class Animal {
+  constructor(public name: string) {}
+
+  describe(): string {
+    return `I am ${this.name}`;
+  }
+}
+
+class Dog extends Animal {
+  bark(): string {
+    return "Woof";
+  }
+}
+
+const d = new Dog("Rex");
+d.describe(); // inherited
+</script>
+<script type="text/x-code" data-lang="rust">
+struct Animal {
+    name: String,
+}
+
+impl Animal {
+    fn describe(&self) -> String {
+        format!("I am {}", self.name)
+    }
+}
+
+struct Dog {
+    animal: Animal,     // a Dog has an Animal
+}
+
+impl Dog {
+    fn bark(&self) -> &str {
+        "Woof"
+    }
+
+    fn describe(&self) -> String {
+        self.animal.describe()
+    }
+}
+</script>
+  </div>
+  <p>For shared behavior across different types, like "anything that can describe itself", Rust uses traits. They are close to TypeScript interfaces. <a href="traits.html">Lesson 11</a> covers them. For "one of several kinds", like <code>Dog | Cat</code>, Rust uses enums, which <a href="enums.html">lesson 9</a> covers.</p>
+</section>
+
+<section>
+  <h2>Destructuring structs</h2>
+  <p>Destructuring works much like in JavaScript, with one rule: you must write <code>..</code> to say "I am ignoring the other fields".</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const { name, age } = user;
+console.log(`${name} is ${age}`);
+
+const { name: userName } = user;
+
+function greet({ name }: User) {
+  console.log(`Hi ${name}`);
+}
+</script>
+<script type="text/x-code" data-lang="rust">
+let User { name, age, .. } = &user;
+println!("{name} is {age}");
+
+let User { name: user_name, .. } = &user;
+
+fn greet(User { name, .. }: &User) {
+    println!("Hi {name}");
+}
+</script>
+  </div>
+  <p>The <code>&amp;user</code> on the right means "look inside without taking it". Without the <code>&amp;</code>, the <code>String</code> fields would move out of <code>user</code>.</p>
+</section>
+
+<section>
+  <h2>Optional fields become Option</h2>
+  <p>TypeScript has <code>bio?: string</code> and <code>string | null</code>. Rust has neither. A field that might be empty has the type <code>Option&lt;T&gt;</code>, and you still write it out when you create the struct.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+interface Profile {
+  name: string;
+  bio?: string;
+  website: string | null;
+}
+
+const p: Profile = { name: "Ana", website: null };
+
+const bioLength = p.bio?.length ?? 0;
+</script>
+<script type="text/x-code" data-lang="rust">
+#[derive(Debug, Default)]
+struct Profile {
+    name: String,
+    bio: Option<String>,
+    website: Option<String>,
+}
+
+let p = Profile {
+    name: String::from("Ana"),
+    bio: None,          // you must write it
+    website: None,
+};
+
+let bio_length = p.bio.as_ref().map(|b| b.len()).unwrap_or(0);
+</script>
+  </div>
+  <aside class="callout tip">
+    <p class="callout-title">Tip</p>
+    <p>With <code>#[derive(Default)]</code> you can skip the empty fields: <code>Profile { name: "Ana".into(), ..Default::default() }</code>. Every <code>Option</code> becomes <code>None</code>, numbers become 0, and strings become empty. <a href="errors.html">Lesson 10</a> covers <code>Option</code> in depth.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>Tuple structs and unit structs</h2>
+  <p>Sometimes the field names add nothing. A tuple struct has a name but numbered fields. A unit struct has no fields at all.</p>
+<script type="text/x-code" data-lang="rust">
+struct Rgb(u8, u8, u8);
+struct Meters(f64);
+struct Marker;                 // unit struct: no data
+
+let red = Rgb(255, 0, 0);
+let height = Meters(1.82);
+println!("{} {}", red.0, height.0);
+</script>
+  <p>A one-field tuple struct is called a newtype. It gives a plain value its own type, so you cannot mix it up with another value of the same shape. TypeScript developers fake this with "branded types". In Rust it is free and normal.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+type UserId = number & { __brand: "UserId" };
+type OrderId = number & { __brand: "OrderId" };
+
+function getUser(id: UserId) { /* ... */ }
+
+const orderId = 7 as OrderId;
+getUser(orderId); // TS error, good
+</script>
+<script type="text/x-code" data-lang="rust">
+struct UserId(u64);
+struct OrderId(u64);
+
+fn get_user(id: UserId) { /* ... */ }
+
+let order_id = OrderId(7);
+get_user(order_id); // error[E0308]: mismatched types
+</script>
+  </div>
+</section>
+
+<section>
+  <h2 data-short="HashMap">Key-value bags become HashMap</h2>
+  <p>When the keys are not known ahead of time, like user IDs or words in a text, you use a <code>Record&lt;string, number&gt;</code> or a <code>Map</code> in TypeScript. In Rust you use <code>HashMap</code> from the standard library. It is not loaded by default, so you import it with <code>use</code>.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const scores = new Map<string, number>();
+scores.set("ana", 10);
+scores.set("bo", 7);
+
+const s = scores.get("ana");   // number | undefined
+
+if (scores.has("bo")) {
+  scores.delete("bo");
+}
+
+for (const [name, score] of scores) {
+  console.log(`${name}: ${score}`);
+}
+
+console.log(scores.size);
+</script>
+<script type="text/x-code" data-lang="rust">
+use std::collections::HashMap;
+
+let mut scores: HashMap<String, i32> = HashMap::new();
+scores.insert(String::from("ana"), 10);
+scores.insert(String::from("bo"), 7);
+
+let s: Option<&i32> = scores.get("ana"); // Some(&10)
+
+if scores.contains_key("bo") {
+    scores.remove("bo");
+}
+
+for (name, score) in &scores {
+    println!("{name}: {score}");
+}
+
+println!("{}", scores.len());
+</script>
+  </div>
+  <p><code>get</code> returns an <code>Option</code>, because the key might not be there. To get a default like <code>scores.get(k) ?? 0</code>, write <code>scores.get(k).copied().unwrap_or(0)</code>. The <code>.copied()</code> turns the <code>&amp;i32</code> reference into a plain <code>i32</code>.</p>
+  <aside class="callout warn">
+    <p class="callout-title">Trap</p>
+    <p><code>scores["zed"]</code> compiles, but it panics (crashes) if the key is missing. JavaScript gives you <code>undefined</code> instead. Use <code>.get()</code> unless you are sure the key exists.</p>
+  </aside>
+
+  <h3>Counting with the entry API</h3>
+  <p>The "get, add one, set back" pattern is so common that HashMap has a shortcut for it. <code>entry(key).or_insert(0)</code> finds the slot, puts 0 there if it is empty, and hands you a mutable reference to the value.</p>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const text = "the cat saw the other cat";
+const counts = new Map<string, number>();
+
+for (const word of text.split(/\s+/)) {
+  counts.set(word, (counts.get(word) ?? 0) + 1);
+}
+// Map { the: 2, cat: 2, saw: 1, other: 1 }
+</script>
+<script type="text/x-code" data-lang="rust">
+let text = "the cat saw the other cat";
+let mut counts: HashMap<&str, usize> = HashMap::new();
+
+for word in text.split_whitespace() {
+    *counts.entry(word).or_insert(0) += 1;
+}
+// {"the": 2, "cat": 2, "saw": 1, "other": 1}
+</script>
+  </div>
+  <p>The <code>*</code> at the start follows the reference to the number inside the map, so <code>+= 1</code> changes the stored value. You will see this pattern in almost every Rust codebase.</p>
+
+  <h3>Building a map from a list</h3>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const prices = new Map([
+  ["apple", 1.2],
+  ["pear", 0.9],
+]);
+
+const obj = Object.fromEntries(prices);
+</script>
+<script type="text/x-code" data-lang="rust">
+let prices = HashMap::from([
+    ("apple", 1.2),
+    ("pear", 0.9),
+]);
+
+let copy: HashMap<&str, f64> = prices.clone().into_iter().collect();
+</script>
+  </div>
+
+  <h3>Order is random. Use BTreeMap for sorted keys.</h3>
+  <p>A JavaScript <code>Map</code> remembers insertion order. A Rust <code>HashMap</code> does not keep any order, and the order can change from run to run. When you need the keys sorted, use <code>BTreeMap</code>. It has the same methods.</p>
+<script type="text/x-code" data-lang="rust">
+use std::collections::BTreeMap;
+
+let mut sorted = BTreeMap::new();
+sorted.insert("pear", 3);
+sorted.insert("apple", 5);
+sorted.insert("fig", 1);
+
+for (fruit, count) in &sorted {
+    println!("{fruit} = {count}");  // apple, fig, pear: always sorted
+}
+</script>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>JavaScript Map</th><th>Rust HashMap</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>new Map()</code></td><td><code>HashMap::new()</code></td><td>Needs <code>let mut</code> to add to it</td></tr>
+        <tr><td><code>map.set(k, v)</code></td><td><code>map.insert(k, v)</code></td><td>Returns the old value as an <code>Option</code></td></tr>
+        <tr><td><code>map.get(k)</code></td><td><code>map.get(&amp;k)</code></td><td>Returns <code>Option&lt;&amp;V&gt;</code></td></tr>
+        <tr><td><code>map.has(k)</code></td><td><code>map.contains_key(&amp;k)</code></td><td></td></tr>
+        <tr><td><code>map.delete(k)</code></td><td><code>map.remove(&amp;k)</code></td><td>Returns the removed value as an <code>Option</code></td></tr>
+        <tr><td><code>map.size</code></td><td><code>map.len()</code></td><td>A method, not a property</td></tr>
+        <tr><td><code>map.keys()</code>, <code>map.values()</code></td><td><code>map.keys()</code>, <code>map.values()</code></td><td>Same names</td></tr>
+        <tr><td><code>for (const [k, v] of map)</code></td><td><code>for (k, v) in &amp;map</code></td><td>Random order</td></tr>
+        <tr><td><code>Object.fromEntries(pairs)</code></td><td><code>pairs.into_iter().collect()</code></td><td>Give the variable a <code>HashMap</code> type</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2 data-short="Dynamic JSON">Dynamic objects and JSON</h2>
+  <p>Sometimes you really do not know the shape, like a JSON response you only peek into. In TypeScript you would use <code>any</code> or <code>unknown</code>. Rust has the <code>serde_json</code> crate, whose <code>Value</code> type can hold any JSON.</p>
+<script type="text/x-code" data-lang="toml" data-title="Cargo.toml">
+[dependencies]
+serde_json = "1"
+</script>
+  <div class="compare">
+<script type="text/x-code" data-lang="ts">
+const text = '{ "user": { "name": "Ana", "tags": ["admin"] } }';
+const data: any = JSON.parse(text);
+
+console.log(data.user.name);          // "Ana"
+console.log(data.nope?.deeper);       // undefined
+</script>
+<script type="text/x-code" data-lang="rust">
+use serde_json::Value;
+
+let text = r#"{ "user": { "name": "Ana", "tags": ["admin"] } }"#;
+let data: Value = serde_json::from_str(text).unwrap();
+
+let name: Option<&str> = data["user"]["name"].as_str(); // Some("Ana")
+let missing = &data["nope"]["deeper"];                  // Value::Null, no crash
+</script>
+  </div>
+  <p>The <code>r#"..."#</code> is a raw string. It lets you write quotes inside without escaping them. <code>Value</code> is handy for a quick look, but real Rust code describes the JSON with a struct and lets serde fill it in. <a href="async.html">Lesson 13</a> shows that with a real API call.</p>
+</section>
+
+<section>
+  <h2 data-short="Class cheat table">Class features, translated</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>TypeScript class</th><th>Rust</th></tr></thead>
+      <tbody>
+        <tr><td><code>class Foo { x: number }</code></td><td><code>struct Foo { x: i32 }</code></td></tr>
+        <tr><td><code>constructor(x) { ... }</code></td><td><code>fn new(x: i32) -&gt; Self</code>, by convention</td></tr>
+        <tr><td><code>new Foo(1)</code></td><td><code>Foo::new(1)</code> or <code>Foo { x: 1 }</code></td></tr>
+        <tr><td><code>this.x</code></td><td><code>self.x</code></td></tr>
+        <tr><td>Method that reads</td><td><code>fn area(&amp;self)</code></td></tr>
+        <tr><td>Method that changes fields</td><td><code>fn grow(&amp;mut self)</code></td></tr>
+        <tr><td><code>static create()</code></td><td>Associated function <code>fn create() -&gt; Self</code>, called as <code>Foo::create()</code></td></tr>
+        <tr><td><code>private</code> / <code>public</code></td><td>Private by default, <code>pub</code> to expose</td></tr>
+        <tr><td><code>readonly x</code></td><td>Every field, unless the variable is <code>mut</code></td></tr>
+        <tr><td><code>get x()</code> / <code>set x(v)</code></td><td><code>fn x(&amp;self)</code> / <code>fn set_x(&amp;mut self, v: i32)</code></td></tr>
+        <tr><td><code>extends Base</code></td><td>Composition: a field of type <code>Base</code></td></tr>
+        <tr><td><code>implements Shape</code></td><td><code>impl Shape for Foo</code> (a trait, see <a href="traits.html">lesson 11</a>)</td></tr>
+        <tr><td><code>toString()</code></td><td><code>impl fmt::Display for Foo</code></td></tr>
+        <tr><td><code>instanceof</code></td><td>No runtime class check. Use an enum and <code>match</code>.</td></tr>
+        <tr><td><code>structuredClone(foo)</code></td><td><code>#[derive(Clone)]</code>, then <code>foo.clone()</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>Check yourself</h2>
+  <div class="quiz">
+    <details>
+      <summary>Why does <code>let p = Point { x: 1, y: 2 }; p.x = 5;</code> fail?</summary>
+      <div><p><code>p</code> is not <code>mut</code>. In Rust, mutability belongs to the whole variable, so every field is frozen. Write <code>let mut p = ...</code>.</p></div>
+    </details>
+    <details>
+      <summary>How do you print a struct while debugging?</summary>
+      <div><p>Add <code>#[derive(Debug)]</code> above it, then use <code>println!("{:?}", value)</code>, <code>{:#?}</code> for pretty output, or <code>dbg!(&amp;value)</code>.</p></div>
+    </details>
+    <details>
+      <summary>What is the difference between <code>fn len(&amp;self)</code> and <code>fn into_parts(self)</code>?</summary>
+      <div><p><code>&amp;self</code> borrows the value, so the caller can keep using it. <code>self</code> takes ownership, so the value is used up after the call.</p></div>
+    </details>
+    <details>
+      <summary>What does <code>map.get("key")</code> return on a <code>HashMap&lt;String, i32&gt;</code>?</summary>
+      <div><p><code>Option&lt;&amp;i32&gt;</code>. It is <code>Some(&amp;value)</code> if the key exists and <code>None</code> if it does not.</p></div>
+    </details>
+    <details>
+      <summary>You need a map that prints its keys in alphabetical order. Which type do you use?</summary>
+      <div><p><code>BTreeMap</code>. A <code>HashMap</code> has no stable order.</p></div>
+    </details>
+  </div>
+</section>
+
+</main>
+<script src="assets/app.js"></script>
+</body>
+</html>
