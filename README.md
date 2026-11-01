@@ -87,3 +87,7 @@ Vercel hosts the site. It deploys from this repository: every push to `main` upd
 ## A note on the Rust examples
 
 Nobody has compiled every code sample yet. They were checked by reading. If an example does not compile, please open an issue with the lesson name and the error message.
+
+## Contributing
+
+Fixes and new lessons are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) shows how to send a pull request and what to check first.
